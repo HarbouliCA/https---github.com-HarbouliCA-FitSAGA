@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if user is an admin
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Forum threads collection
+    match /forum_threads/{threadId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isAdmin() &&
+        request.resource.data.authorId == request.auth.uid;
+      allow update: if isAuthenticated() && isAdmin() &&
+        (resource.data.authorId == request.auth.uid || isAdmin());
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+
+    // Activities collection
+    match /activities/{activityId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Sessions collection
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Tutorials collection
+    match /tutorials/{tutorialId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

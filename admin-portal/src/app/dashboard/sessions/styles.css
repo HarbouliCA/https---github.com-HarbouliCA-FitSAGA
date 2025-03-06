@@ -1,0 +1,245 @@
+/* Calendar Styles */
+.admin-calendar {
+  /* Calendar container */
+  height: 100%;
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+}
+
+.admin-calendar .rbc-calendar {
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  color: var(--primary-900);
+}
+
+/* Header styles */
+.admin-calendar .rbc-toolbar {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-toolbar button {
+  color: #374151;
+  background-color: white;
+  border: 1px solid #d1d5db;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  border-radius: 0.375rem;
+}
+
+.admin-calendar .rbc-toolbar button:hover {
+  background-color: #f9fafb;
+}
+
+.admin-calendar .rbc-toolbar button.rbc-active {
+  background-color: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.admin-calendar .rbc-toolbar-label {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+/* Month view styles */
+.admin-calendar .rbc-month-view {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.admin-calendar .rbc-month-header {
+  background-color: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-header {
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  border-bottom: none;
+  text-transform: uppercase;
+}
+
+.admin-calendar .rbc-header + .rbc-header {
+  border-left: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-month-row {
+  border-top: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-date-cell {
+  padding: 0.25rem;
+  font-size: 0.875rem;
+  text-align: right;
+}
+
+.admin-calendar .rbc-date-cell.rbc-now {
+  font-weight: 600;
+  color: var(--primary-600);
+}
+
+.admin-calendar .rbc-today {
+  background-color: var(--primary-50);
+}
+
+/* Event styles */
+.admin-calendar .rbc-event {
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  border: none;
+  padding: 0.25rem 0.5rem;
+}
+
+.admin-calendar .rbc-event-content {
+  font-size: 0.875rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Week/Day view styles */
+.admin-calendar .rbc-time-view {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.admin-calendar .rbc-time-header {
+  background-color: #f9fafb;
+}
+
+.admin-calendar .rbc-time-header-content {
+  border-left: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-time-content {
+  border-top: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-timeslot-group {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-time-slot {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+/* Agenda view styles */
+.admin-calendar .rbc-agenda-view {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.admin-calendar .rbc-agenda-table {
+  border: none;
+}
+
+.admin-calendar .rbc-agenda-date-cell {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  padding: 0.75rem 1rem;
+}
+
+.admin-calendar .rbc-agenda-time-cell {
+  font-size: 0.875rem;
+  color: #6b7280;
+  padding: 0.75rem 1rem;
+}
+
+.admin-calendar .rbc-agenda-event-cell {
+  font-size: 0.875rem;
+  padding: 0.75rem 1rem;
+}
+
+/* More link styles */
+.admin-calendar .rbc-show-more {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--primary-600);
+  padding: 0.25rem 0.5rem;
+  background-color: transparent;
+}
+
+.admin-calendar .rbc-show-more:hover {
+  color: var(--primary-700);
+  text-decoration: underline;
+}
+
+/* Off-range day styles */
+.admin-calendar .rbc-off-range-bg {
+  background-color: #f9fafb;
+}
+
+.admin-calendar .rbc-off-range {
+  color: #9ca3af;
+}
+
+/* Row/cell selection styles */
+.admin-calendar .rbc-selected-cell {
+  background-color: var(--primary-50);
+}
+
+.admin-calendar .rbc-row-segment {
+  padding-left: 0.25rem;
+  padding-right: 0.25rem;
+}
+
+/* Popup overlay styles */
+.admin-calendar .rbc-overlay {
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+  z-index: 50;
+}
+
+.admin-calendar .rbc-overlay-header {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Activity type colors */
+.admin-calendar .rbc-event.activity-personal {
+  background-color: var(--primary-600);
+  color: white;
+}
+
+.admin-calendar .rbc-event.activity-kickboxing {
+  background-color: var(--secondary-600);
+  color: white;
+}
+
+.admin-calendar .rbc-event.activity-fitness {
+  background-color: var(--turquoise-600);
+  color: white;
+}
+
+.admin-calendar .rbc-event.activity-classes {
+  background-color: var(--primary-700);
+  color: white;
+}
+
+/* Status styles */
+.admin-calendar .rbc-event.status-completed {
+  opacity: 0.75;
+}
+
+.admin-calendar .rbc-event.status-cancelled {
+  background-color: #dc2626;
+  text-decoration: line-through;
+}

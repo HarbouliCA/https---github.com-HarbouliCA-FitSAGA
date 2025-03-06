@@ -1,0 +1,51 @@
+// Copy these rules to your Firebase Console
+// Go to: https://console.firebase.google.com/project/saga-fitness/firestore/rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is an admin
+    function isAdmin() {
+      return isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Users collection rules
+    match /users/{userId} {
+      // Allow users to read their own profile
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      // Only allow admins to create/update/delete users
+      allow write: if isAdmin();
+    }
+    
+    // Tutorials collection rules
+    match /tutorials/{tutorialId} {
+      // Allow authenticated users to read tutorials
+      allow read: if isAuthenticated();
+      // Only allow admins to create/update/delete tutorials
+      allow write: if isAdmin();
+    }
+    
+    // Activities collection rules
+    match /activities/{activityId} {
+      // Allow authenticated users to read activities
+      allow read: if isAuthenticated();
+      // Only allow admins to create/update/delete activities
+      allow write: if isAdmin();
+    }
+    
+    // Sessions collection rules
+    match /sessions/{sessionId} {
+      // Allow authenticated users to read sessions
+      allow read: if isAuthenticated();
+      // Only allow admins to create/update/delete sessions
+      allow write: if isAdmin();
+    }
+  }
+}

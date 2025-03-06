@@ -1,0 +1,16 @@
+// Copy these rules to your Firebase Storage Rules in the Firebase Console
+// Go to: https://console.firebase.google.com/project/saga-fitness/storage/rules
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      // Allow read/write access to authenticated users
+      allow read, write: if request.auth != null;
+      
+      // For development, you can also allow access from localhost
+      // Uncomment this line if you're still having CORS issues
+      // allow read, write: if request.origin.matches('http://localhost:3000');
+    }
+  }
+}

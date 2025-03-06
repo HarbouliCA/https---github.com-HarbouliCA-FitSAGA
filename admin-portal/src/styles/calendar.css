@@ -1,0 +1,198 @@
+/* Calendar Overrides */
+.admin-calendar.rbc-calendar {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.admin-calendar .rbc-toolbar {
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-toolbar button {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  background-color: white;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.admin-calendar .rbc-toolbar button:hover {
+  background-color: #f9fafb;
+}
+
+.admin-calendar .rbc-toolbar button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #3b82f6;
+}
+
+.admin-calendar .rbc-toolbar button.rbc-active {
+  background-color: #2563eb;
+  color: white;
+  border-color: #2563eb;
+}
+
+.admin-calendar .rbc-toolbar button.rbc-active:hover {
+  background-color: #1d4ed8;
+}
+
+.admin-calendar .rbc-header {
+  padding: 0.5rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+}
+
+.admin-calendar .rbc-today {
+  background-color: #eff6ff;
+}
+
+.admin-calendar .rbc-event {
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  border: none;
+}
+
+.admin-calendar .rbc-event-content {
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  padding: 0 0.5rem;
+}
+
+.admin-calendar .rbc-show-more {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #2563eb;
+}
+
+.admin-calendar .rbc-show-more:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+.admin-calendar .rbc-off-range-bg {
+  background-color: #f9fafb;
+}
+
+.admin-calendar .rbc-day-bg + .rbc-day-bg,
+.admin-calendar .rbc-header + .rbc-header {
+  border-left: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-month-row + .rbc-month-row {
+  border-top: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-timeslot-group {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-time-content {
+  border-top: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-time-header-content {
+  border-left: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-time-header.rbc-overflowing {
+  border-right: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-time-view {
+  border: 1px solid #e5e7eb;
+  border-radius: 0.375rem;
+}
+
+.admin-calendar .rbc-agenda-view table.rbc-agenda-table {
+  border: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-agenda-view table.rbc-agenda-table tbody > tr > td {
+  border-top: 1px solid #e5e7eb;
+}
+
+.admin-calendar .rbc-agenda-view table.rbc-agenda-table .rbc-agenda-time-cell {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.admin-calendar .rbc-agenda-view table.rbc-agenda-table .rbc-agenda-event-cell {
+  font-size: 0.875rem;
+}
+
+/* Event Popup Styling */
+.admin-calendar .rbc-overlay {
+  background-color: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+  z-index: 50;
+}
+
+.admin-calendar .rbc-overlay-header {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Calendar Day Styling */
+.admin-calendar .calendar-day {
+  transition-property: background-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+
+/* Time Grid Styling */
+.admin-calendar .rbc-time-column .rbc-timeslot-group {
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.admin-calendar .rbc-current-time-indicator {
+  background-color: #2563eb;
+  height: 1px;
+}
+
+/* Time Slot Labels */
+.admin-calendar .rbc-time-gutter .rbc-timeslot-group {
+  font-size: 0.75rem;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* Week/Day View Event Styles */
+.admin-calendar .rbc-time-view .rbc-event {
+  border-radius: 0.125rem;
+  border: none;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+/* Month View Cell Hover */
+.admin-calendar .rbc-month-view .rbc-day-bg:hover {
+  background-color: #f9fafb;
+}
+
+/* Selected Date Styling */
+.admin-calendar .rbc-day-bg.rbc-selected-cell {
+  background-color: #eff6ff;
+}
+
+/* Time Grid Now Indicator */
+.admin-calendar .rbc-current-time-indicator {
+  background-color: #2563eb;
+  height: 1px;
+}
