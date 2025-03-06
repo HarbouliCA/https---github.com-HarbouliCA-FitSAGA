@@ -17,51 +17,38 @@ export type User = {
   accessStatus?: 'green' | 'red';
 };
 
-export type Activity = {
-  id: string;
+export type ActivityType = 'ENTREMIENTO_PERSONAL' | 'KICK_BOXING' | 'SALE_FITNESS' | 'CLASES_DERIGIDAS';
+
+export interface ActivityFormData {
+  type: ActivityType;
   name: string;
-  description: string;
-  type: 'ENTREMIENTO_PERSONAL' | 'KICK_BOXING' | 'SALE_FITNESS' | 'CLASES_DERIGIDAS';
-  creditValue: number;
-  imageUrl?: string;
-  duration: number; // Default duration in minutes
-  capacity: number; // Default capacity for sessions
-  equipmentNeeded?: string[]; // Equipment required for this activity
-  difficulty: 'beginner' | 'intermediate' | 'advanced'; // Difficulty level
+  description?: string;
+  capacity: number;
+  duration: number;
+}
+
+export interface Activity extends ActivityFormData {
+  id: string;
   createdAt: Date;
   updatedAt: Date;
-};
+}
 
-export type Session = {
+export interface Session {
   id: string;
-  activityId: string;
+  activityType: ActivityType;
   activityName: string;
-  title: string;
-  description?: string;
-  notes?: string;
   startTime: Date;
   endTime: Date;
   capacity: number;
-  bookedCount: number;
-  instructor: string; // Required instructor for each session
-  recurring?: {
-    frequency: 'daily' | 'weekly' | 'monthly';
-    repeatEvery: number; // 1 = every day/week/month, 2 = every other day/week/month, etc.
-    weekdays?: string[]; // ['monday', 'wednesday', 'friday'] - only for weekly frequency
-    endDate: Date;
-    parentSessionId?: string; // Reference to the original session in a recurring series
-  };
-  createdAt: Date;
-  updatedAt: Date;
-};
+  enrolledCount: number;
+  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+}
 
-export type Booking = {
-  id: string;
-  userId: string;
-  sessionId: string;
-  status: 'confirmed' | 'cancelled' | 'attended';
-  creditsUsed: number;
-  bookedAt: Date;
+export const activityDisplayNames: Record<ActivityType, string> = {
+  'ENTREMIENTO_PERSONAL': 'Entrenamiento Personal',
+  'KICK_BOXING': 'Kick Boxing',
+  'SALE_FITNESS': 'Sale Fitness',
+  'CLASES_DERIGIDAS': 'Clases Dirigidas'
 };
 
 export type Exercise = {
@@ -137,4 +124,13 @@ export type ForumThread = {
   createdAt: { seconds: number; nanoseconds: number };
   updatedAt: { seconds: number; nanoseconds: number };
   lastActivity: { seconds: number; nanoseconds: number };
+};
+
+export type Booking = {
+  id: string;
+  userId: string;
+  sessionId: string;
+  status: 'confirmed' | 'cancelled' | 'attended';
+  creditsUsed: number;
+  bookedAt: Date;
 };

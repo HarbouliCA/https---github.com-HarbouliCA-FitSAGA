@@ -7,19 +7,7 @@ import { PlusIcon, CalendarIcon } from '@heroicons/react/24/outline';
 import { PageNavigation } from '@/components/layout/PageNavigation';
 import { useFirebase } from '@/contexts/FirebaseContext';
 import { collection, getDocs } from 'firebase/firestore';
-
-type ActivityType = 'ENTREMIENTO_PERSONAL' | 'KICK_BOXING' | 'SALE_FITNESS' | 'CLASES_DERIGIDAS';
-
-type Session = {
-  id: string;
-  activityType: ActivityType;
-  activityName: string;
-  startTime: Date;
-  endTime: Date;
-  capacity: number;
-  enrolledCount: number;
-  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
-};
+import { Session, ActivityType, activityDisplayNames } from '@/types';
 
 const SessionListPage = () => {
   const router = useRouter();
@@ -37,9 +25,11 @@ const SessionListPage = () => {
         
         const fetchedSessions = querySnapshot.docs.map(doc => {
           const data = doc.data();
+          const activityType = data.activityType as ActivityType;
+          
           return {
             id: doc.id,
-            activityType: data.activityType as ActivityType,
+            activityType: activityType || 'CLASES_DERIGIDAS', // Default value if undefined
             activityName: data.activityName || 'Unnamed Activity',
             startTime: data.startTime?.toDate() || new Date(),
             endTime: data.endTime?.toDate() || new Date(),
@@ -78,10 +68,8 @@ const SessionListPage = () => {
     }
   };
 
-  const formatActivityType = (type: ActivityType) => {
-    return type.split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
+  const formatActivityType = (type: ActivityType): string => {
+    return activityDisplayNames[type];
   };
 
   if (loading) {
