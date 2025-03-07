@@ -23,6 +23,10 @@ interface FormData {
     repeatEvery: number;
     weekdays?: string[];
     endDate: Date;
+    timeSlots?: {
+      startTime: string; // HH:mm format
+      endTime: string; // HH:mm format
+    }[];
   };
 }
 
@@ -136,16 +140,19 @@ export default function CreateSessionPage() {
     }
   };
 
-  function generateSessionDates(data: FormData): Date[] {
+  function generateSessionDates(data: FormData): { startTime: Date; endTime: Date }[] {
     if (!data.recurring) return [];
 
-    const dates: Date[] = [];
+    const sessions: { startTime: Date; endTime: Date }[] = [];
     const startDate = new Date(data.startTime);
     const endDate = new Date(data.recurring.endDate);
     const repeatEvery = data.recurring.repeatEvery;
 
-    // Get the day of week for the start date (0-6, where 0 is Sunday)
-    const startDay = startDate.getDay();
+    // Get time slots or use the single time slot from form data
+    const timeSlots = data.recurring.timeSlots || [{
+      startTime: `${data.startTime.getHours().toString().padStart(2, '0')}:${data.startTime.getMinutes().toString().padStart(2, '0')}`,
+      endTime: `${data.endTime.getHours().toString().padStart(2, '0')}:${data.endTime.getMinutes().toString().padStart(2, '0')}`
+    }];
 
     // Map weekday names to numbers
     const weekdayMap: { [key: string]: number } = {
@@ -159,21 +166,54 @@ export default function CreateSessionPage() {
     let currentDate = new Date(startDate);
     while (currentDate <= endDate) {
       if (data.recurring.frequency === 'daily') {
-        dates.push(new Date(currentDate));
+        // For each day, create sessions for all time slots
+        timeSlots.forEach(slot => {
+          const [startHour, startMinute] = slot.startTime.split(':').map(Number);
+          const [endHour, endMinute] = slot.endTime.split(':').map(Number);
+
+          const sessionStart = new Date(currentDate);
+          sessionStart.setHours(startHour, startMinute, 0);
+
+          const sessionEnd = new Date(currentDate);
+          sessionEnd.setHours(endHour, endMinute, 0);
+
+          sessions.push({ startTime: sessionStart, endTime: sessionEnd });
+        });
         currentDate.setDate(currentDate.getDate() + repeatEvery);
       } else if (data.recurring.frequency === 'weekly' && selectedDays.length > 0) {
-        // For weekly frequency, check if the current day is selected
         if (selectedDays.includes(currentDate.getDay())) {
-          dates.push(new Date(currentDate));
+          timeSlots.forEach(slot => {
+            const [startHour, startMinute] = slot.startTime.split(':').map(Number);
+            const [endHour, endMinute] = slot.endTime.split(':').map(Number);
+
+            const sessionStart = new Date(currentDate);
+            sessionStart.setHours(startHour, startMinute, 0);
+
+            const sessionEnd = new Date(currentDate);
+            sessionEnd.setHours(endHour, endMinute, 0);
+
+            sessions.push({ startTime: sessionStart, endTime: sessionEnd });
+          });
         }
         currentDate.setDate(currentDate.getDate() + 1);
       } else if (data.recurring.frequency === 'monthly') {
-        dates.push(new Date(currentDate));
+        timeSlots.forEach(slot => {
+          const [startHour, startMinute] = slot.startTime.split(':').map(Number);
+          const [endHour, endMinute] = slot.endTime.split(':').map(Number);
+
+          const sessionStart = new Date(currentDate);
+          sessionStart.setHours(startHour, startMinute, 0);
+
+          const sessionEnd = new Date(currentDate);
+          sessionEnd.setHours(endHour, endMinute, 0);
+
+          sessions.push({ startTime: sessionStart, endTime: sessionEnd });
+        });
         currentDate.setMonth(currentDate.getMonth() + repeatEvery);
       }
     }
 
-    return dates;
+    return sessions;
   }
 
   const onSubmit = async (data: FormData) => {
@@ -184,50 +224,56 @@ export default function CreateSessionPage() {
 
     try {
       if (data.isRecurring && data.recurring) {
+        // For Sale Fitness, automatically set up hourly sessions from 7 AM to 12 AM
+        if (selectedActivity.type === 'SALE_FITNESS') {
+          data.recurring.timeSlots = Array.from({ length: 18 }, (_, i) => {
+            const hour = i + 7; // Start from 7 AM
+            return {
+              startTime: `${hour.toString().padStart(2, '0')}:00`,
+              endTime: `${(hour + 1).toString().padStart(2, '0')}:00`
+            };
+          });
+        }
+
         const sessionDates = generateSessionDates(data);
-        let parentSessionId: string | null = null;
+        let parentSessionId: string | undefined = undefined;
 
-        for (const [index, date] of sessionDates.entries()) {
-          const startTime = new Date(date);
-          startTime.setHours(data.startTime.getHours(), data.startTime.getMinutes(), 0);
-
-          const endTime = new Date(date);
-          endTime.setHours(data.endTime.getHours(), data.endTime.getMinutes(), 0);
-
-          const recurring: NonNullable<SessionData['recurring']> = {
-            frequency: data.recurring.frequency,
-            repeatEvery: Number(data.recurring.repeatEvery),
-            endDate: data.recurring.endDate,
-            ...(data.recurring.frequency === 'weekly' && data.recurring.weekdays?.length && {
-              weekdays: data.recurring.weekdays
-            }),
-            ...(parentSessionId && index > 0 && {
-              parentSessionId
-            })
-          };
-
-          const sessionData: SessionData = {
+        for (const [index, session] of sessionDates.entries()) {
+          const sessionData: Omit<SessionData, 'id'> = {
             activityId: data.activityId,
-            activityName: selectedActivity.name,
-            startTime,
-            endTime,
+            activityName: data.activityName,
+            startTime: session.startTime,
+            endTime: session.endTime,
             capacity: Number(data.capacity),
             enrolledCount: 0,
             status: data.status,
-            recurring: data.isRecurring ? recurring : null,
+            recurring: {
+              frequency: data.recurring.frequency,
+              repeatEvery: Number(data.recurring.repeatEvery),
+              endDate: data.recurring.endDate,
+              ...(data.recurring.frequency === 'weekly' && data.recurring.weekdays?.length && {
+                weekdays: data.recurring.weekdays
+              }),
+              ...(parentSessionId ? { parentSessionId } : {})
+            },
             createdAt: new Date(),
             updatedAt: new Date()
           };
 
-          const docRef: DocumentReference = await addDoc(collection(firestore as Firestore, 'sessions'), sessionData);
+          const docRef = await addDoc(collection(firestore, 'sessions'), sessionData);
+          
+          // Store the first session's ID as the parent ID for the series
           if (index === 0) {
             parentSessionId = docRef.id;
           }
         }
+
+        router.push('/dashboard/sessions');
       } else {
-        const sessionData: SessionData = {
+        // Handle single session creation
+        const sessionData: Omit<SessionData, 'id'> = {
           activityId: data.activityId,
-          activityName: selectedActivity.name,
+          activityName: data.activityName,
           startTime: data.startTime,
           endTime: data.endTime,
           capacity: Number(data.capacity),
@@ -238,13 +284,13 @@ export default function CreateSessionPage() {
           updatedAt: new Date()
         };
 
-        await addDoc(collection(firestore as Firestore, 'sessions'), sessionData);
+        await addDoc(collection(firestore, 'sessions'), sessionData);
+        router.push('/dashboard/sessions');
       }
-
-      router.push('/dashboard/sessions');
     } catch (error) {
       console.error('Error creating session:', error);
       setError('Failed to create session');
+    } finally {
       setSaving(false);
     }
   };

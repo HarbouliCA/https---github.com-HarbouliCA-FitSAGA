@@ -33,15 +33,31 @@ export interface Activity extends ActivityFormData {
   updatedAt: Date;
 }
 
+export interface RecurringRule {
+  frequency: 'daily' | 'weekly' | 'monthly';
+  repeatEvery: number;
+  weekdays?: string[];
+  endDate: Date;
+  parentSessionId?: string;
+  timeSlots?: {
+    startTime: string; // HH:mm format
+    endTime: string; // HH:mm format
+  }[];
+}
+
 export interface Session {
   id: string;
-  activityType: ActivityType;
+  activityId: string;
   activityName: string;
+  activityType: ActivityType;
   startTime: Date;
   endTime: Date;
   capacity: number;
   enrolledCount: number;
   status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+  recurring: RecurringRule | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export const activityDisplayNames: Record<ActivityType, string> = {

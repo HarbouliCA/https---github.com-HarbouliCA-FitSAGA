@@ -14,6 +14,7 @@ const SessionListPage = () => {
   const { firestore } = useFirebase();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchSessions = async () => {
@@ -29,13 +30,24 @@ const SessionListPage = () => {
           
           return {
             id: doc.id,
-            activityType: activityType || 'CLASES_DERIGIDAS', // Default value if undefined
+            activityId: data.activityId || '',
+            activityType: activityType || 'CLASES_DERIGIDAS',
             activityName: data.activityName || 'Unnamed Activity',
             startTime: data.startTime?.toDate() || new Date(),
             endTime: data.endTime?.toDate() || new Date(),
             capacity: Number(data.capacity) || 10,
             enrolledCount: Number(data.enrolledCount) || 0,
-            status: data.status || 'scheduled'
+            status: data.status || 'scheduled',
+            recurring: data.recurring ? {
+              frequency: data.recurring.frequency,
+              repeatEvery: Number(data.recurring.repeatEvery),
+              endDate: data.recurring.endDate?.toDate() || new Date(),
+              weekdays: data.recurring.weekdays,
+              parentSessionId: data.recurring.parentSessionId,
+              timeSlots: data.recurring.timeSlots
+            } : null,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            updatedAt: data.updatedAt?.toDate() || new Date()
           } satisfies Session;
         });
 
@@ -45,6 +57,7 @@ const SessionListPage = () => {
         setSessions(fetchedSessions);
       } catch (error) {
         console.error('Error fetching sessions:', error);
+        setError('Failed to load sessions');
       } finally {
         setLoading(false);
       }
@@ -69,7 +82,8 @@ const SessionListPage = () => {
   };
 
   const formatActivityType = (type: ActivityType): string => {
-    return activityDisplayNames[type];
+    if (!type) return 'Unknown Activity';
+    return activityDisplayNames[type] || type;
   };
 
   if (loading) {
@@ -101,6 +115,33 @@ const SessionListPage = () => {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-6">
+        <PageNavigation
+          title="Sessions"
+          actions={[
+            {
+              label: 'Calendar View',
+              icon: CalendarIcon,
+              href: '/dashboard/sessions',
+              variant: 'secondary'
+            },
+            {
+              label: 'New Session',
+              icon: PlusIcon,
+              href: '/dashboard/sessions/create',
+              variant: 'primary'
+            }
+          ]}
+        />
+        <div className="mt-6 bg-white rounded-lg shadow p-6">
+          <p className="text-red-600">{error}</p>
         </div>
       </div>
     );
