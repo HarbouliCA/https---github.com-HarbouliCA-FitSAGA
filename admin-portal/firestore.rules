@@ -7,45 +7,58 @@ service cloud.firestore {
       return request.auth != null;
     }
     
-    // Check if user is an admin
-    function isAdmin() {
-      return isAuthenticated() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    // Get user role
+    function getUserRole() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return userDoc != null ? userDoc.data.role : null;
+    }
+
+    // Check if user has permission
+    function hasPermission(permission) {
+      let role = getUserRole();
+      return role == 'ADMIN' || 
+             role == 'DIRECTOR' || 
+             (role == 'SECRETARY' && 
+              (permission == 'manage_sessions' || permission == 'manage_users')) ||
+             (role == 'INSTRUCTOR' && permission == 'manage_sessions');
     }
 
     // Users collection
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin();
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && hasPermission('manage_users');
     }
 
     // Forum threads collection
     match /forum_threads/{threadId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isAdmin() &&
+      allow create: if isAuthenticated() && hasPermission('manage_forum_threads') &&
         request.resource.data.authorId == request.auth.uid;
-      allow update: if isAuthenticated() && isAdmin() &&
-        (resource.data.authorId == request.auth.uid || isAdmin());
-      allow delete: if isAuthenticated() && isAdmin();
+      allow update: if isAuthenticated() && hasPermission('manage_forum_threads') &&
+        (resource.data.authorId == request.auth.uid || getUserRole() in ['ADMIN', 'DIRECTOR']);
+      allow delete: if isAuthenticated() && hasPermission('manage_forum_threads') && 
+        (resource.data.authorId == request.auth.uid || getUserRole() in ['ADMIN', 'DIRECTOR']);
     }
 
     // Activities collection
     match /activities/{activityId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isAuthenticated() && hasPermission('manage_activities');
     }
 
     // Sessions collection
     match /sessions/{sessionId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create: if isAuthenticated() && hasPermission('manage_sessions');
+      allow update: if isAuthenticated() && hasPermission('manage_sessions');
+      allow delete: if isAuthenticated() && hasPermission('manage_sessions') && 
+        (resource.data.authorId == request.auth.uid || getUserRole() in ['ADMIN', 'DIRECTOR']);
     }
 
     // Tutorials collection
     match /tutorials/{tutorialId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow write: if isAuthenticated() && hasPermission('manage_tutorials');
     }
 
     // Default deny
