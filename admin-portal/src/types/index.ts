@@ -60,6 +60,17 @@ export interface Session {
   updatedAt: Date;
 }
 
+export interface InstructorSession {
+  id: string;
+  activityName: string;
+  instructorId: string;
+  startTime: Date;
+  endTime: Date;
+  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export const activityDisplayNames: Record<ActivityType, string> = {
   'ENTREMIENTO_PERSONAL': 'Entrenamiento Personal',
   'KICK_BOXING': 'Kick Boxing',
@@ -150,3 +161,39 @@ export type Booking = {
   creditsUsed: number;
   bookedAt: Date;
 };
+
+export interface BankDetails {
+  bankName: string;
+  accountHolder: string;
+  accountNumber: string;
+  iban?: string;
+}
+
+export interface Instructor {
+  uid: string;
+  fullName: string;
+  email: string;
+  dateOfBirth: Date;
+  telephone: string;
+  workingSince: Date;
+  address: string;
+  bankDetails: BankDetails;
+  role: 'instructor';
+  accessStatus: 'green' | 'red';
+  createdAt: Date;
+  updatedAt: Date;
+  lastActive?: Date;
+  photoURL?: string;
+}
+
+export interface InstructorFormData {
+  fullName: string;
+  email: string;
+  password?: string;
+  dateOfBirth: Date;
+  telephone: string;
+  workingSince: Date;
+  address: string;
+  bankDetails: BankDetails;
+  photoURL?: string;
+}

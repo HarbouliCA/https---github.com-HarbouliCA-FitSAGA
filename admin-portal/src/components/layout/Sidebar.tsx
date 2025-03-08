@@ -11,7 +11,8 @@ import {
   BookOpenIcon,
   ChatBubbleLeftRightIcon,
   Cog6ToothIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  AcademicCapIcon
 } from '@heroicons/react/24/outline';
 
 const navigation = [
@@ -19,6 +20,7 @@ const navigation = [
   { name: 'Users', href: '/dashboard/users', icon: UsersIcon },
   { name: 'Activities', href: '/dashboard/activities', icon: ClipboardDocumentListIcon },
   { name: 'Sessions', href: '/dashboard/sessions', icon: CalendarIcon },
+  { name: 'Instructors', href: '/dashboard/instructors', icon: AcademicCapIcon },
   { name: 'Tutorials', href: '/dashboard/tutorials', icon: BookOpenIcon },
   { name: 'Forum', href: '/dashboard/forum', icon: ChatBubbleLeftRightIcon },
   { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
