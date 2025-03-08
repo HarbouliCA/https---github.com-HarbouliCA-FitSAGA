@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { doc, getDoc, updateDoc, serverTimestamp, Firestore } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
@@ -10,12 +10,11 @@ import { ArrowLeftIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outl
 import Link from 'next/link';
 
 interface PageProps {
-  params: {
-    id: string;
-  };
+  params: Promise<{ id: string }>;
 }
 
 export default function EditInstructorPage({ params }: PageProps) {
+  const { id } = use(params);
   const router = useRouter();
   const [instructor, setInstructor] = useState<Instructor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,7 +28,7 @@ export default function EditInstructorPage({ params }: PageProps) {
       if (!firestore) return;
 
       try {
-        const instructorDoc = await getDoc(doc(firestore as Firestore, 'instructors', params.id));
+        const instructorDoc = await getDoc(doc(firestore as Firestore, 'instructors', id));
         
         if (!instructorDoc.exists()) {
           setError('Instructor not found');
@@ -55,7 +54,7 @@ export default function EditInstructorPage({ params }: PageProps) {
     };
 
     fetchInstructor();
-  }, [params.id]);
+  }, [id]);
 
   const handleSubmit = async (data: InstructorFormData) => {
     if (!firestore || !instructor) {
@@ -81,13 +80,13 @@ export default function EditInstructorPage({ params }: PageProps) {
       };
 
       await updateDoc(
-        doc(firestore as Firestore, 'instructors', params.id),
+        doc(firestore as Firestore, 'instructors', id),
         instructorData
       );
 
       // Update the user document as well to keep names in sync
       await updateDoc(
-        doc(firestore as Firestore, 'users', params.id),
+        doc(firestore as Firestore, 'users', id),
         {
           name: data.fullName,
           email: data.email,
@@ -95,7 +94,7 @@ export default function EditInstructorPage({ params }: PageProps) {
         }
       );
 
-      router.push(`/dashboard/instructors/${params.id}`);
+      router.push(`/dashboard/instructors/${id}`);
     } catch (err) {
       console.error('Error updating instructor:', err);
       setError(err instanceof Error ? err.message : 'Failed to update instructor');
@@ -109,7 +108,7 @@ export default function EditInstructorPage({ params }: PageProps) {
     setError(null);
 
     try {
-      const response = await fetch(`/api/instructors/${params.id}`, {
+      const response = await fetch(`/api/instructors/${id}`, {
         method: 'DELETE',
       });
 
@@ -165,7 +164,7 @@ export default function EditInstructorPage({ params }: PageProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
           <Link
-            href={`/dashboard/instructors/${params.id}`}
+            href={`/dashboard/instructors/${id}`}
             className="btn-secondary flex items-center"
           >
             <ArrowLeftIcon className="h-4 w-4 mr-1" />

@@ -1,28 +1,27 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, orderBy, updateDoc, doc, Firestore, limit, startAfter, where } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, Firestore, limit, where, startAfter } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
 import { Instructor } from '@/types';
 import Link from 'next/link';
-import { 
-  PlusIcon,
-  MagnifyingGlassIcon,
-} from '@heroicons/react/24/outline';
-import { InstructorList } from '@/components/instructors/InstructorList';
+import { PlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 export default function InstructorsPage() {
   const [instructors, setInstructors] = useState<Instructor[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [lastVisible, setLastVisible] = useState<any>(null);
   const [hasMore, setHasMore] = useState(true);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const router = useRouter();
 
   const fetchInstructors = async (searchValue = '') => {
-    if (typeof window === 'undefined' || !firestore) return;
-    
-    setLoading(true);
+    if (!firestore) return;
+
     try {
       let instructorsQuery;
       
@@ -77,34 +76,31 @@ export default function InstructorsPage() {
             );
       }
       
-      const instructorsSnapshot = await getDocs(instructorsQuery);
+      const querySnapshot = await getDocs(instructorsQuery);
       
-      if (instructorsSnapshot.empty) {
+      if (querySnapshot.empty) {
         setHasMore(false);
         if (!lastVisible) setInstructors([]);
         setLoading(false);
         return;
       }
       
-      const lastDoc = instructorsSnapshot.docs[instructorsSnapshot.docs.length - 1];
+      const lastDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
       setLastVisible(lastDoc);
       
-      const fetchedInstructors = instructorsSnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          ...data,
-          uid: doc.id,
-          dateOfBirth: data.dateOfBirth?.toDate(),
-          workingSince: data.workingSince?.toDate(),
-          createdAt: data.createdAt?.toDate(),
-          updatedAt: data.updatedAt?.toDate(),
-          lastActive: data.lastActive?.toDate()
-        } as Instructor;
-      });
+      const instructorsData = querySnapshot.docs.map(doc => ({
+        ...doc.data(),
+        uid: doc.id,
+        dateOfBirth: doc.data().dateOfBirth?.toDate(),
+        workingSince: doc.data().workingSince?.toDate(),
+        createdAt: doc.data().createdAt?.toDate(),
+        updatedAt: doc.data().updatedAt?.toDate(),
+        lastActive: doc.data().lastActive?.toDate()
+      })) as Instructor[];
       
-      let filteredInstructors = fetchedInstructors;
+      let filteredInstructors = instructorsData;
       if (searchValue) {
-        filteredInstructors = fetchedInstructors.filter(instructor => 
+        filteredInstructors = instructorsData.filter(instructor => 
           instructor.fullName?.toLowerCase().includes(searchValue.toLowerCase()) || 
           instructor.email?.toLowerCase().includes(searchValue.toLowerCase())
         );
@@ -116,9 +112,10 @@ export default function InstructorsPage() {
         setInstructors(filteredInstructors);
       }
       
-      setHasMore(instructorsSnapshot.docs.length === 10);
-    } catch (error) {
-      console.error('Error fetching instructors:', error);
+      setHasMore(querySnapshot.docs.length === 10);
+    } catch (err) {
+      console.error('Error fetching instructors:', err);
+      setError('Failed to load instructors');
     } finally {
       setLoading(false);
     }
@@ -128,66 +125,64 @@ export default function InstructorsPage() {
     fetchInstructors(searchTerm);
   }, [searchTerm, filter]);
 
+  const handleRowClick = (instructorId: string) => {
+    router.push(`/dashboard/instructors/${instructorId}`);
+  };
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setLastVisible(null);
     fetchInstructors(searchTerm);
   };
 
-  const toggleInstructorAccess = async (instructor: Instructor, newStatus: 'green' | 'red') => {
-    if (!firestore) {
-      console.error('Firebase services not initialized');
-      return;
-    }
-    
-    try {
-      await updateDoc(doc(firestore as Firestore, 'instructors', instructor.uid), {
-        accessStatus: newStatus
-      });
-      
-      // Update local state
-      setInstructors(instructors.map(i => 
-        i.uid === instructor.uid ? { ...i, accessStatus: newStatus } : i
-      ));
-    } catch (error) {
-      console.error('Error updating instructor status:', error);
-    }
-  };
+  if (loading) {
+    return (
+      <div className="flex justify-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-red-600">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Instructors</h1>
-        <Link 
-          href="/dashboard/instructors/create" 
-          className="btn-primary flex items-center"
-        >
-          <PlusIcon className="h-5 w-5 mr-1" />
+        <Link href="/dashboard/instructors/create" className="btn-primary">
+          <PlusIcon className="h-5 w-5 mr-2" />
           Add Instructor
         </Link>
       </div>
-      
+
       {/* Search and Filter */}
       <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200 p-4">
         <form onSubmit={handleSearch} className="flex gap-4">
-          <div className="relative flex-grow">
+          <div className="flex-1 relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
             </div>
             <input
               type="text"
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-              placeholder="Search by name or email"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search instructors..."
+              className="form-input pl-10"
             />
           </div>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as 'all' | 'active' | 'inactive')}
-            className="block w-40 pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+            className="form-select"
           >
-            <option value="all">All Status</option>
+            <option value="all">All</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
@@ -196,32 +191,85 @@ export default function InstructorsPage() {
           </button>
         </form>
       </div>
-      
-      {/* Instructors List */}
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-600"></div>
-        </div>
-      ) : instructors.length > 0 ? (
-        <>
-          <InstructorList 
-            instructors={instructors}
-            onToggleAccess={toggleInstructorAccess}
-          />
-          {hasMore && (
-            <div className="flex justify-center">
-              <button
-                onClick={() => fetchInstructors(searchTerm)}
-                className="btn-secondary"
-              >
-                Load More
-              </button>
+
+      {/* Instructors Table */}
+      <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+        <div className="min-w-full divide-y divide-gray-200">
+          <div className="bg-gray-50">
+            <div className="grid grid-cols-12 gap-4 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <div className="col-span-3">Name</div>
+              <div className="col-span-3">Email</div>
+              <div className="col-span-2">Phone</div>
+              <div className="col-span-2">Working Since</div>
+              <div className="col-span-2">Last Active</div>
             </div>
-          )}
-        </>
-      ) : (
-        <div className="text-center py-8 text-gray-500">
-          No instructors found
+          </div>
+          <div className="bg-white divide-y divide-gray-200">
+            {instructors.length === 0 ? (
+              <div className="px-6 py-4 text-center text-gray-500">
+                No instructors found. Add your first instructor to get started.
+              </div>
+            ) : (
+              instructors.map((instructor) => (
+                <div
+                  key={instructor.uid}
+                  onClick={() => handleRowClick(instructor.uid)}
+                  className="grid grid-cols-12 gap-4 px-6 py-4 cursor-pointer hover:bg-gray-50 transition-colors duration-150 group"
+                >
+                  <div className="col-span-3 flex items-center">
+                    <div className="flex-shrink-0 h-10 w-10 relative">
+                      {instructor.photoURL ? (
+                        <Image
+                          src={instructor.photoURL}
+                          alt={instructor.fullName}
+                          fill
+                          className="rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
+                          <span className="text-gray-500 font-medium">
+                            {instructor.fullName?.charAt(0)?.toUpperCase()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="ml-4">
+                      <div className="text-sm font-medium text-gray-900 group-hover:text-primary-600">
+                        {instructor.fullName}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="col-span-3 flex items-center">
+                    <div className="text-sm text-gray-900">{instructor.email}</div>
+                  </div>
+                  <div className="col-span-2 flex items-center">
+                    <div className="text-sm text-gray-900">{instructor.telephone}</div>
+                  </div>
+                  <div className="col-span-2 flex items-center">
+                    <div className="text-sm text-gray-900">
+                      {instructor.workingSince?.toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="col-span-2 flex items-center">
+                    <div className="text-sm text-gray-900">
+                      {instructor.lastActive?.toLocaleDateString() || 'Never'}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {hasMore && (
+        <div className="flex justify-center">
+          <button
+            onClick={() => fetchInstructors(searchTerm)}
+            className="btn-secondary"
+          >
+            Load More
+          </button>
         </div>
       )}
     </div>
