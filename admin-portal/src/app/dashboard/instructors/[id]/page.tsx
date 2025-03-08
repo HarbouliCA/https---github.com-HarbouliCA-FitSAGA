@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { doc, getDoc, collection, query, where, getDocs, Firestore } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
@@ -12,28 +12,32 @@ import {
   CalendarIcon,
   ClipboardDocumentListIcon,
   ChatBubbleLeftRightIcon,
-  UserCircleIcon
+  UserCircleIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
 interface PageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default function InstructorDetailsPage({ params }: PageProps) {
   const router = useRouter();
+  const { id } = use(params);
   const [instructor, setInstructor] = useState<Instructor | null>(null);
   const [assignedSessions, setAssignedSessions] = useState<InstructorSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     const fetchInstructor = async () => {
       if (!firestore) return;
 
       try {
-        const instructorDoc = await getDoc(doc(firestore as Firestore, 'instructors', params.id));
+        const instructorDoc = await getDoc(doc(firestore as Firestore, 'instructors', id));
         
         if (!instructorDoc.exists()) {
           setError('Instructor not found');
@@ -54,7 +58,7 @@ export default function InstructorDetailsPage({ params }: PageProps) {
         // Fetch assigned sessions
         const sessionsQuery = query(
           collection(firestore as Firestore, 'sessions'),
-          where('instructorId', '==', params.id),
+          where('instructorId', '==', id),
           where('status', 'in', ['scheduled', 'in_progress'])
         );
 
@@ -78,7 +82,31 @@ export default function InstructorDetailsPage({ params }: PageProps) {
     };
 
     fetchInstructor();
-  }, [params.id]);
+  }, [id]);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/instructors/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete instructor');
+      }
+
+      router.push('/dashboard/instructors');
+    } catch (err) {
+      console.error('Error deleting instructor:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete instructor');
+      setShowDeleteModal(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -113,14 +141,55 @@ export default function InstructorDetailsPage({ params }: PageProps) {
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">{instructor.fullName}</h1>
         </div>
-        <Link
-          href={`/dashboard/instructors/${params.id}/edit`}
-          className="btn-primary flex items-center"
-        >
-          <PencilSquareIcon className="h-5 w-5 mr-1" />
-          Edit
-        </Link>
+        <div className="flex items-center space-x-2">
+          <Link
+            href={`/dashboard/instructors/${id}/edit`}
+            className="btn-primary flex items-center"
+          >
+            <PencilSquareIcon className="h-5 w-5 mr-1" />
+            Edit
+          </Link>
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="btn-danger"
+            disabled={deleting}
+          >
+            {deleting ? 'Deleting...' : 'Delete Instructor'}
+          </button>
+        </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center mb-4">
+              <ExclamationTriangleIcon className="h-6 w-6 text-red-600 mr-2" />
+              <h3 className="text-lg font-medium text-gray-900">Delete Instructor</h3>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              Are you sure you want to delete this instructor? This action cannot be undone.
+              All associated data including sessions and activities will also be deleted.
+            </p>
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                className="btn-secondary"
+                disabled={deleting}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                className="btn-danger"
+                disabled={deleting}
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Main Info */}
@@ -207,7 +276,7 @@ export default function InstructorDetailsPage({ params }: PageProps) {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Assigned Sessions</h3>
                 <Link
-                  href={`/dashboard/sessions?instructor=${params.id}`}
+                  href={`/dashboard/sessions?instructor=${id}`}
                   className="btn-secondary text-sm"
                 >
                   View All
@@ -254,21 +323,21 @@ export default function InstructorDetailsPage({ params }: PageProps) {
               <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
               <div className="space-y-3">
                 <Link
-                  href={`/dashboard/sessions/create?instructor=${params.id}`}
+                  href={`/dashboard/sessions/create?instructor=${id}`}
                   className="btn-secondary w-full justify-center"
                 >
                   <CalendarIcon className="h-5 w-5 mr-2" />
                   Assign Session
                 </Link>
                 <Link
-                  href={`/dashboard/activities?instructor=${params.id}`}
+                  href={`/dashboard/activities?instructor=${id}`}
                   className="btn-secondary w-full justify-center"
                 >
                   <ClipboardDocumentListIcon className="h-5 w-5 mr-2" />
                   View Activities
                 </Link>
                 <Link
-                  href={`/dashboard/forum?instructor=${params.id}`}
+                  href={`/dashboard/forum?instructor=${id}`}
                   className="btn-secondary w-full justify-center"
                 >
                   <ChatBubbleLeftRightIcon className="h-5 w-5 mr-2" />
