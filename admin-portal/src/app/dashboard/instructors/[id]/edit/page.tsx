@@ -6,7 +6,7 @@ import { doc, getDoc, updateDoc, serverTimestamp, Firestore } from 'firebase/fir
 import { firestore } from '@/lib/firebase';
 import { Instructor, InstructorFormData } from '@/types';
 import { InstructorForm } from '@/components/instructors/InstructorForm';
-import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 
 interface PageProps {
@@ -20,6 +20,8 @@ export default function EditInstructorPage({ params }: PageProps) {
   const [instructor, setInstructor] = useState<Instructor | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,6 +104,30 @@ export default function EditInstructorPage({ params }: PageProps) {
     }
   };
 
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/instructors/${params.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete instructor');
+      }
+
+      router.push('/dashboard/instructors');
+    } catch (err) {
+      console.error('Error deleting instructor:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete instructor');
+      setShowDeleteModal(false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-8">
@@ -147,6 +173,13 @@ export default function EditInstructorPage({ params }: PageProps) {
           </Link>
           <h1 className="text-2xl font-bold text-gray-900">Edit Instructor</h1>
         </div>
+        <button
+          onClick={() => setShowDeleteModal(true)}
+          className="btn-danger"
+          disabled={deleting}
+        >
+          {deleting ? 'Deleting...' : 'Delete Instructor'}
+        </button>
       </div>
 
       {/* Error Message */}
@@ -185,6 +218,54 @@ export default function EditInstructorPage({ params }: PageProps) {
           />
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity z-50">
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+              <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+                <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+                  <div className="sm:flex sm:items-start">
+                    <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+                      <ExclamationTriangleIcon className="h-6 w-6 text-red-600" aria-hidden="true" />
+                    </div>
+                    <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
+                      <h3 className="text-base font-semibold leading-6 text-gray-900">
+                        Delete Instructor
+                      </h3>
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-500">
+                          Are you sure you want to delete this instructor? This action cannot be undone.
+                          The instructor will lose access to all systems and their data will be permanently removed.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                  <button
+                    type="button"
+                    className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:ml-3 sm:w-auto"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                  >
+                    {deleting ? 'Deleting...' : 'Delete'}
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:mt-0 sm:w-auto"
+                    onClick={() => setShowDeleteModal(false)}
+                    disabled={deleting}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

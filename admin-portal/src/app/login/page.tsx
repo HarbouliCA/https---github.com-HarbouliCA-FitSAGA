@@ -1,37 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@/context/AuthContext';
+import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import { FirebaseError } from 'firebase/app';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn } = useAuth();
   const router = useRouter();
-
-  const getErrorMessage = (error: FirebaseError) => {
-    switch (error.code) {
-      case 'auth/invalid-email':
-        return 'Invalid email address format';
-      case 'auth/user-disabled':
-        return 'This account has been disabled';
-      case 'auth/user-not-found':
-        return 'No account found with this email';
-      case 'auth/wrong-password':
-        return 'Incorrect password';
-      case 'auth/too-many-requests':
-        return 'Too many failed login attempts. Please try again later';
-      case 'auth/network-request-failed':
-        return 'Network error. Please check your internet connection';
-      default:
-        return error.message || 'Failed to sign in. Please try again';
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,11 +23,22 @@ export default function Login() {
     }
 
     try {
-      await signIn(email, password);
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+
       router.push('/dashboard');
-    } catch (error: any) {
+      router.refresh();
+    } catch (error) {
       console.error('Login error:', error);
-      setError(error instanceof FirebaseError ? getErrorMessage(error) : 'Failed to sign in. Please try again');
+      setError('Failed to sign in. Please try again');
     } finally {
       setIsLoading(false);
     }
@@ -61,7 +50,6 @@ export default function Login() {
         <div>
           <div className="flex justify-center">
             <div className="h-20 w-20 relative">
-              {/* Replace with your logo */}
               <div className="absolute inset-0 flex items-center justify-center bg-primary-600 rounded-full text-white text-xl font-bold">
                 FS
               </div>

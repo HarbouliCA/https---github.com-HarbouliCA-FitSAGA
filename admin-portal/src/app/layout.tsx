@@ -1,6 +1,7 @@
 import { Inter } from 'next/font/google';
 import { FirebaseProvider } from '@/contexts/FirebaseContext';
 import { AuthProvider } from '@/context/AuthContext';
+import { NextAuthProvider } from '@/components/providers/NextAuthProvider';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
@@ -18,11 +19,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <FirebaseProvider>
-          <AuthProvider>
-            {children}
-          </AuthProvider>
-        </FirebaseProvider>
+        <NextAuthProvider>
+          <FirebaseProvider>
+            <AuthProvider>
+              {children}
+            </AuthProvider>
+          </FirebaseProvider>
+        </NextAuthProvider>
       </body>
     </html>
   );

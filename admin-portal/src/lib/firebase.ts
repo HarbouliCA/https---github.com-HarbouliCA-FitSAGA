@@ -2,43 +2,49 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
-import { getAnalytics } from 'firebase/analytics';
+import { getAnalytics, Analytics } from 'firebase/analytics';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyD3MAuIYZ2dGq5hspUvxK4KeNIbVzw6EaQ",
-  authDomain: "saga-fitness.firebaseapp.com",
-  projectId: "saga-fitness",
-  storageBucket: "saga-fitness.firebasestorage.app",
-  messagingSenderId: "360667066098",
-  appId: "1:360667066098:web:93bef4a0c957968c67aa6b",
-  measurementId: "G-GCZRZ22EYL"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase only on the client side
-let app: FirebaseApp | null = null;
-let auth: Auth | null = null;
-let firestore: Firestore | null = null;
-let storage: FirebaseStorage | null = null;
-let analytics: any = null;
+// Initialize Firebase
+let app: FirebaseApp;
+let auth: Auth;
+let firestore: Firestore;
+let storage: FirebaseStorage;
+let analytics: Analytics | null = null;
 
 if (typeof window !== 'undefined') {
   try {
+    // Check if Firebase is already initialized
     app = getApps().length ? getApp() : initializeApp(firebaseConfig);
     auth = getAuth(app);
     firestore = getFirestore(app);
     storage = getStorage(app);
     analytics = getAnalytics(app);
   } catch (error) {
-    console.error('Firebase initialization error:', error);
+    console.error('Firebase client initialization error:', error);
+    throw error; // Re-throw to handle it in the component
   }
 } else {
-  // Server-side placeholder
-  app = null;
-  auth = null;
-  firestore = null;
-  storage = null;
-  analytics = null;
+  // Server-side initialization
+  try {
+    app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    firestore = getFirestore(app);
+    storage = getStorage(app);
+  } catch (error) {
+    console.error('Firebase server-side initialization error:', error);
+    throw error;
+  }
 }
 
 export { app, auth, firestore, storage, analytics };

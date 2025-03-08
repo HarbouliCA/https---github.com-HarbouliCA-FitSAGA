@@ -1,9 +1,9 @@
 import { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth, firestore } from '@/lib/firebase';
-import { doc, getDoc, Firestore } from 'firebase/firestore';
-import { Auth } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
+import { adminFirestore } from '@/lib/firebase-admin';
+import { doc, getDoc } from 'firebase/firestore';
 
 // Extend the built-in session types
 declare module 'next-auth' {
@@ -37,6 +37,7 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   providers: [
     CredentialsProvider({
@@ -50,34 +51,51 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Missing credentials');
         }
 
-        if (!auth || !firestore) {
-          throw new Error('Firebase not initialized');
-        }
-
         try {
-          // Sign in with Firebase
-          const { user } = await signInWithEmailAndPassword(
-            auth as Auth,
+          // Sign in with Firebase Auth
+          const { user: firebaseUser } = await signInWithEmailAndPassword(
+            auth,
             credentials.email,
             credentials.password
           );
 
-          // Get additional user data from Firestore
-          const userDoc = await getDoc(doc(firestore as Firestore, 'users', user.uid));
-          if (!userDoc.exists()) {
+          // Get additional user data from Firestore using Admin SDK
+          const userDoc = await adminFirestore.collection('users').doc(firebaseUser.uid).get();
+          
+          if (!userDoc.exists) {
             throw new Error('User not found in database');
           }
 
           const userData = userDoc.data();
+          
+          // Check if user is an admin
+          if (userData?.role !== 'admin') {
+            throw new Error('Unauthorized - Admin access required');
+          }
+
+          // Check if user has active status
+          if (userData?.accessStatus !== 'green') {
+            throw new Error('Account is not active');
+          }
+
           return {
-            id: user.uid,
-            email: user.email || '',
-            name: userData.name,
+            id: firebaseUser.uid,
+            email: firebaseUser.email || '',
+            name: userData.name || '',
             role: userData.role,
             accessStatus: userData.accessStatus,
-          } as any; // This is safe because we've extended the User type above
-        } catch (error) {
+          };
+        } catch (error: any) {
           console.error('Authentication error:', error);
+          
+          // Handle Firebase Auth errors
+          if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+            throw new Error('Invalid email or password');
+          }
+          if (error.code === 'auth/too-many-requests') {
+            throw new Error('Too many failed attempts. Try again later');
+          }
+          
           throw error;
         }
       },
@@ -86,18 +104,16 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        // Include additional user data in the JWT token
-        token.role = (user as any).role;
-        token.accessStatus = (user as any).accessStatus;
+        token.role = user.role;
+        token.accessStatus = user.accessStatus;
       }
       return token;
     },
     async session({ session, token }) {
       if (token && session.user) {
-        // Include additional user data in the session
-        (session.user as any).id = token.sub;
-        (session.user as any).role = token.role;
-        (session.user as any).accessStatus = token.accessStatus;
+        session.user.id = token.sub as string;
+        session.user.role = token.role as string;
+        session.user.accessStatus = token.accessStatus as string;
       }
       return session;
     },

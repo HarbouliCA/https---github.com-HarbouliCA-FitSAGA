@@ -12,6 +12,16 @@ interface InstructorFormProps {
   showPassword?: boolean;
 }
 
+const formatDateForInput = (date: Date | undefined | null): string => {
+  if (!date) return '';
+  try {
+    return date instanceof Date ? date.toISOString().split('T')[0] : '';
+  } catch (error) {
+    console.error('Invalid date:', error);
+    return '';
+  }
+};
+
 export function InstructorForm({ 
   initialData,
   onSubmit,
@@ -117,7 +127,7 @@ export function InstructorForm({
             <input
               type="date"
               id="dateOfBirth"
-              value={formData.dateOfBirth.toISOString().split('T')[0]}
+              value={formatDateForInput(formData.dateOfBirth)}
               onChange={(e) => setFormData({ ...formData, dateOfBirth: new Date(e.target.value) })}
               disabled={disabled}
               required
@@ -132,7 +142,7 @@ export function InstructorForm({
             <input
               type="date"
               id="workingSince"
-              value={formData.workingSince.toISOString().split('T')[0]}
+              value={formatDateForInput(formData.workingSince)}
               onChange={(e) => setFormData({ ...formData, workingSince: new Date(e.target.value) })}
               disabled={disabled}
               required
