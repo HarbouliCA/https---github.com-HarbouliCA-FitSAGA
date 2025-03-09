@@ -1,0 +1,96 @@
+/* Calendar Event Styles */
+.rbc-event {
+  border: none !important;
+  border-radius: 4px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.rbc-event.rbc-selected {
+  background-color: inherit !important;
+  box-shadow: 0 0 0 2px #2563eb !important;
+}
+
+/* Time Grid Styles */
+.rbc-time-view {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rbc-timeslot-group {
+  min-height: 80px !important;
+}
+
+.rbc-time-header-content {
+  font-weight: 500;
+}
+
+.rbc-header {
+  padding: 8px !important;
+  font-weight: 600 !important;
+}
+
+/* Month View Styles */
+.rbc-month-view {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rbc-month-row + .rbc-month-row {
+  border-top: 1px solid #e5e7eb !important;
+}
+
+.rbc-day-bg + .rbc-day-bg {
+  border-left: 1px solid #e5e7eb !important;
+}
+
+/* Today Highlight */
+.rbc-today {
+  background-color: #f8fafc !important;
+}
+
+/* Off-Range Days */
+.rbc-off-range-bg {
+  background-color: #f8fafc !important;
+}
+
+/* Time Gutter */
+.rbc-time-gutter .rbc-timeslot-group {
+  border-bottom: 1px solid #e5e7eb !important;
+}
+
+.rbc-time-header-gutter {
+  background-color: #f8fafc !important;
+}
+
+/* Toolbar Styles */
+.rbc-toolbar {
+  margin-bottom: 1rem !important;
+  padding: 0.5rem !important;
+  background-color: #ffffff !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.rbc-toolbar button {
+  color: #4b5563 !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 6px !important;
+  padding: 0.5rem 1rem !important;
+  font-weight: 500 !important;
+}
+
+.rbc-toolbar button:hover {
+  background-color: #f8fafc !important;
+  border-color: #d1d5db !important;
+}
+
+.rbc-toolbar button.rbc-active {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+  color: #ffffff !important;
+}
+
+.rbc-toolbar button.rbc-active:hover {
+  background-color: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+}

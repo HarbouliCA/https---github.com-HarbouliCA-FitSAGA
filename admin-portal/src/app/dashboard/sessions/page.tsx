@@ -21,14 +21,30 @@ interface Session {
   id: string;
   activityType: ActivityType;
   activityName?: string;
+  title?: string;
+  description?: string;
+  notes?: string;
   startTime: Date;
   endTime: Date;
   capacity: number;
   enrolledCount: number;
+  bookedCount: number;
   status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
   instructorId: string;
   instructorName: string;
+  instructor: string;
   instructorPhotoURL?: string;
+  recurring: RecurringRule | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface RecurringRule {
+  frequency: string;
+  repeatEvery: number;
+  endDate: Date;
+  weekdays?: string[];
+  parentSessionId?: string;
 }
 
 interface CalendarEvent {
@@ -171,24 +187,45 @@ const SessionsPage = () => {
             id: doc.id,
             activityType: data.activityType as ActivityType,
             activityName: data.activityName || 'Unnamed Activity',
+            title: data.title || data.activityName || 'Unnamed Activity',
+            description: data.description || '',
+            notes: data.notes || '',
             startTime: data.startTime?.toDate() || new Date(),
             endTime: data.endTime?.toDate() || new Date(),
             capacity: Number(data.capacity) || 10,
             enrolledCount: Number(data.enrolledCount) || 0,
+            bookedCount: Number(data.enrolledCount) || 0,
             status: data.status || 'scheduled',
             instructorId: data.instructorId || '',
             instructorName: data.instructorName || '',
-            instructorPhotoURL: data.instructorPhotoURL
-          } satisfies Session;
+            instructor: data.instructorName || '',
+            instructorPhotoURL: data.instructorPhotoURL || null,
+            recurring: data.recurring ? {
+              frequency: data.recurring.frequency || 'weekly',
+              repeatEvery: Number(data.recurring.repeatEvery) || 1,
+              endDate: data.recurring.endDate?.toDate() || new Date(),
+              weekdays: data.recurring.weekdays || [],
+              parentSessionId: data.recurring.parentSessionId
+            } : null,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            updatedAt: data.updatedAt?.toDate() || new Date()
+          } as Session;
         });
         
-        // Extract unique instructors
-        const uniqueInstructors = Array.from(new Set(
-          fetchedSessions
-            .filter(s => s.instructorId && s.instructorName)
-            .map(s => ({ id: s.instructorId, name: s.instructorName }))
-        ));
-        setInstructors(uniqueInstructors);
+        // Extract unique instructors with proper key handling
+        const instructorMap = new Map();
+        fetchedSessions
+          .filter(s => s.instructorId && s.instructorName)
+          .forEach(s => {
+            if (!instructorMap.has(s.instructorId)) {
+              instructorMap.set(s.instructorId, {
+                id: s.instructorId,
+                name: s.instructorName
+              });
+            }
+          });
+        
+        setInstructors(Array.from(instructorMap.values()));
         setSessions(fetchedSessions);
       } catch (error) {
         console.error('Error fetching sessions:', error);
@@ -231,27 +268,39 @@ const SessionsPage = () => {
     };
   };
 
-  const EventComponent = ({ event }: { event: CalendarEvent }) => (
-    <div className="p-1">
-      <div className="font-medium text-gray-900">{event.title}</div>
-      {event.instructor && (
-        <div className="flex items-center mt-1 text-sm text-gray-600">
-          {event.instructor.photoURL ? (
-            <Image
-              src={event.instructor.photoURL}
-              alt={event.instructor.name}
-              width={16}
-              height={16}
-              className="rounded-full mr-1"
-            />
-          ) : (
-            <UserCircleIcon className="h-4 w-4 mr-1" />
-          )}
-          <span>{event.instructor.name}</span>
+  const EventComponent = ({ event, title }: { event: CalendarEvent, title: string }) => {
+    // Determine if we're in a compact view (week/day) based on event title display
+    const isCompactView = !title;
+    
+    return (
+      <div className={`${isCompactView ? 'p-0.5 text-xs' : 'p-1'} overflow-hidden h-full`}>
+        <div className={`font-medium text-gray-900 ${isCompactView ? 'truncate' : ''}`}>
+          {event.title}
         </div>
-      )}
-    </div>
-  );
+        {event.instructor && !isCompactView && (
+          <div className="flex items-center mt-1 text-sm text-gray-600">
+            {event.instructor.photoURL ? (
+              <Image
+                src={event.instructor.photoURL}
+                alt={event.instructor.name}
+                width={16}
+                height={16}
+                className="rounded-full mr-1"
+              />
+            ) : (
+              <UserCircleIcon className="h-4 w-4 mr-1" />
+            )}
+            <span>{event.instructor.name}</span>
+          </div>
+        )}
+        {event.instructor && isCompactView && (
+          <div className="truncate text-xs text-gray-600">
+            {event.instructor.name}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -318,6 +367,15 @@ const SessionsPage = () => {
           }}
           eventPropGetter={eventStyleGetter}
           onSelectEvent={(event) => router.push(`/dashboard/sessions/${event.id}`)}
+          formats={{
+            timeGutterFormat: (date: Date) => format(date, 'h:mm a'),
+            eventTimeRangeFormat: ({ start, end }: { start: Date, end: Date }) => {
+              return `${format(start, 'h:mm a')} - ${format(end, 'h:mm a')}`;
+            },
+            agendaTimeRangeFormat: ({ start, end }: { start: Date, end: Date }) => {
+              return `${format(start, 'h:mm a')} - ${format(end, 'h:mm a')}`;
+            }
+          }}
         />
       </div>
     </div>

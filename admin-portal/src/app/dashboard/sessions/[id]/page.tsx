@@ -3,22 +3,23 @@
 import { useState, useEffect } from 'react';
 import { doc, getDoc, deleteDoc, Firestore } from 'firebase/firestore';
 import { firestore } from '@/lib/firebase';
-import { Session } from '@/types';
 import { useRouter } from 'next/navigation';
-import { TrashIcon } from '@heroicons/react/24/outline';
-import PageNavigation from '@/components/ui/PageNavigation';
+import { Session } from '@/types';
+import { PageNavigation } from '@/components/layout/PageNavigation';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 
 export default function SessionDetailPage({ params }: { params: { id: string } }) {
+  const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const router = useRouter();
 
   useEffect(() => {
     const fetchSession = async () => {
-      if (!firestore) return;
+      if (!firestore || !params.id) return;
 
       try {
         const sessionDoc = await getDoc(doc(firestore as Firestore, 'sessions', params.id));
@@ -33,12 +34,12 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
         setSession({
           id: sessionDoc.id,
           ...data,
-          startTime: data.startTime?.toDate() || null,
-          endTime: data.endTime?.toDate() || null,
+          startTime: data.startTime?.toDate() || new Date(),
+          endTime: data.endTime?.toDate() || new Date(),
           recurring: data.recurring ? {
             ...data.recurring,
-            endDate: data.recurring.endDate?.toDate() || null
-          } : undefined
+            endDate: data.recurring.endDate?.toDate() || new Date()
+          } : null
         } as Session);
       } catch (error) {
         console.error('Error fetching session:', error);
@@ -69,23 +70,19 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
 
   if (loading) {
     return (
-      <div className="flex justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-600"></div>
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600" />
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          <p>{error}</p>
-          <button 
-            onClick={() => router.push('/dashboard/sessions')}
-            className="text-red-700 font-medium hover:text-red-800 mt-2"
-          >
-            Back to Sessions
-          </button>
+      <div className="container mx-auto px-4 py-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">{error}</p>
         </div>
       </div>
     );
@@ -93,29 +90,27 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
 
   if (!session) return null;
 
-  const actions = (
-    <div className="flex items-center space-x-4">
-      <button
-        onClick={() => setShowDeleteModal(true)}
-        className="text-red-400 hover:text-red-600"
-      >
-        <TrashIcon className="h-5 w-5" />
-      </button>
-    </div>
-  );
-
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto px-4 py-6">
       <PageNavigation
-        backUrl="/dashboard/sessions"
-        backLabel="Back to Sessions"
-        title={`Session ${session.id}`}
-        actions={actions}
+        title={session.title || session.activityName}
+        actions={[
+          {
+            label: 'Back to Sessions',
+            href: '/dashboard/sessions',
+            variant: 'secondary'
+          },
+          {
+            label: 'Delete Session',
+            onClick: () => setShowDeleteModal(true),
+            variant: 'danger'
+          }
+        ]}
       />
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="mt-6">
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="p-6 grid md:grid-cols-2 gap-6">
             <div>
               <h2 className="text-xl font-semibold mb-4">Session Details</h2>
               <div className="space-y-4">
@@ -125,10 +120,6 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
                     <div>{session.activityName}</div>
                     <div className="text-xs text-gray-500">ID: {session.activityId}</div>
                   </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-500">Title</label>
-                  <div className="mt-1 text-sm text-gray-900">{session.title}</div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-500">Time</label>
@@ -148,15 +139,13 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
                   <div className="mt-1 text-sm text-gray-900">{session.capacity} participants</div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-500">Booked Count</label>
-                  <div className="mt-1 text-sm text-gray-900">{session.bookedCount} participants</div>
+                  <label className="block text-sm font-medium text-gray-500">Enrolled Count</label>
+                  <div className="mt-1 text-sm text-gray-900">{session.enrolledCount} participants</div>
                 </div>
-                {session.instructor && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-500">Instructor</label>
-                    <div className="mt-1 text-sm text-gray-900">{session.instructor}</div>
-                  </div>
-                )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-500">Instructor</label>
+                  <div className="mt-1 text-sm text-gray-900">{session.instructorName}</div>
+                </div>
                 {session.recurring && (
                   <div>
                     <label className="block text-sm font-medium text-gray-500">Recurring Schedule</label>
@@ -197,33 +186,26 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <h2 className="text-xl font-bold mb-4">Delete Session</h2>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to delete this session? This action cannot be undone.
-            </p>
-            <div className="flex justify-end space-x-4">
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                className="btn-secondary"
-                disabled={isDeleting}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                className="btn-danger"
-                disabled={isDeleting}
-              >
-                {isDeleting ? 'Deleting...' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        title="Delete Session"
+        description="Are you sure you want to delete this session? This action cannot be undone."
+        actions={[
+          {
+            label: 'Cancel',
+            onClick: () => setShowDeleteModal(false),
+            variant: 'secondary',
+            disabled: isDeleting
+          },
+          {
+            label: 'Delete',
+            onClick: handleDelete,
+            variant: 'danger',
+            disabled: isDeleting
+          }
+        ]}
+      />
     </div>
   );
 }
