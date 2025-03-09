@@ -25,12 +25,14 @@ export interface ActivityFormData {
   description?: string;
   capacity: number;
   duration: number;
+  creditValue?: number;
 }
 
 export interface Activity extends ActivityFormData {
   id: string;
   createdAt: Date;
   updatedAt: Date;
+  creditValue: number;
 }
 
 export interface RecurringRule {
@@ -39,10 +41,20 @@ export interface RecurringRule {
   weekdays?: string[];
   endDate: Date;
   parentSessionId?: string;
-  timeSlots?: {
-    startTime: string; // HH:mm format
-    endTime: string; // HH:mm format
-  }[];
+}
+
+export interface SessionFormData {
+  activityId: string;
+  activityName: string;
+  activityType: ActivityType;
+  startTime: Date;
+  endTime: Date;
+  capacity: number;
+  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+  recurring?: RecurringRule | null;
+  instructorId: string;
+  instructorName: string;
+  isRecurring?: boolean;
 }
 
 export interface Session {
@@ -56,6 +68,9 @@ export interface Session {
   enrolledCount: number;
   status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
   recurring: RecurringRule | null;
+  instructorId: string;
+  instructorName: string;
+  instructorPhotoURL?: string;
   createdAt: Date;
   updatedAt: Date;
 }

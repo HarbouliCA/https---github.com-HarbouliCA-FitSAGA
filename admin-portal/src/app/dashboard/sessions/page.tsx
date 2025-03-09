@@ -6,10 +6,12 @@ import { format, parse, startOfWeek, getDay, addMonths, addDays } from 'date-fns
 import { enUS } from 'date-fns/locale';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
-import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ListBulletIcon } from '@heroicons/react/24/outline';
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon, ListBulletIcon, UserCircleIcon } from '@heroicons/react/24/outline';
 import { PageNavigation } from '@/components/layout/PageNavigation';
 import { useFirebase } from '@/contexts/FirebaseContext';
 import { collection, getDocs } from 'firebase/firestore';
+import Image from 'next/image';
+import Link from 'next/link';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './styles.css';
 
@@ -24,6 +26,9 @@ interface Session {
   capacity: number;
   enrolledCount: number;
   status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
+  instructorId: string;
+  instructorName: string;
+  instructorPhotoURL?: string;
 }
 
 interface CalendarEvent {
@@ -32,6 +37,11 @@ interface CalendarEvent {
   start: Date;
   end: Date;
   resource: Session;
+  instructor?: {
+    id: string;
+    name: string;
+    photoURL?: string;
+  };
 }
 
 const locales = {
@@ -46,6 +56,26 @@ const localizer = dateFnsLocalizer({
   locales,
 });
 
+// Generate a consistent color based on instructor ID
+const getInstructorColor = (instructorId: string) => {
+  const colors = [
+    'rgb(254, 243, 199)', // yellow-100
+    'rgb(220, 252, 231)', // green-100
+    'rgb(224, 242, 254)', // blue-100
+    'rgb(254, 226, 226)', // red-100
+    'rgb(237, 233, 254)', // purple-100
+    'rgb(255, 237, 213)', // orange-100
+    'rgb(249, 250, 251)', // gray-100
+  ];
+  
+  // Simple hash function to get a consistent index
+  const hash = instructorId.split('').reduce((acc, char) => {
+    return char.charCodeAt(0) + ((acc << 5) - acc);
+  }, 0);
+  
+  return colors[Math.abs(hash) % colors.length];
+};
+
 const SessionsPage = () => {
   const router = useRouter();
   const { firestore } = useFirebase();
@@ -53,6 +83,8 @@ const SessionsPage = () => {
   const [date, setDate] = useState(new Date());
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedInstructor, setSelectedInstructor] = useState<string>('');
+  const [instructors, setInstructors] = useState<Array<{ id: string; name: string }>>([]);
 
   const CustomToolbar = (props: ToolbarProps<CalendarEvent>) => {
     const viewLabels = {
@@ -94,17 +126,32 @@ const SessionsPage = () => {
           </h2>
         </div>
 
-        <div className="flex items-center gap-2">
-          {Object.entries(viewLabels).map(([viewKey, label]) => (
-            <Button
-              key={viewKey}
-              variant={props.view === viewKey ? 'primary' : 'secondary'}
-              onClick={() => props.onView(viewKey as View)}
-              size="sm"
-            >
-              {label}
-            </Button>
-          ))}
+        <div className="flex items-center gap-4">
+          <select
+            value={selectedInstructor}
+            onChange={(e) => setSelectedInstructor(e.target.value)}
+            className="block w-48 pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+          >
+            <option value="">All Instructors</option>
+            {instructors.map((instructor) => (
+              <option key={instructor.id} value={instructor.id}>
+                {instructor.name}
+              </option>
+            ))}
+          </select>
+
+          <div className="flex items-center gap-2">
+            {Object.entries(viewLabels).map(([viewKey, label]) => (
+              <Button
+                key={viewKey}
+                variant={props.view === viewKey ? 'primary' : 'secondary'}
+                onClick={() => props.onView(viewKey as View)}
+                size="sm"
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -128,10 +175,20 @@ const SessionsPage = () => {
             endTime: data.endTime?.toDate() || new Date(),
             capacity: Number(data.capacity) || 10,
             enrolledCount: Number(data.enrolledCount) || 0,
-            status: data.status || 'scheduled'
+            status: data.status || 'scheduled',
+            instructorId: data.instructorId || '',
+            instructorName: data.instructorName || '',
+            instructorPhotoURL: data.instructorPhotoURL
           } satisfies Session;
         });
         
+        // Extract unique instructors
+        const uniqueInstructors = Array.from(new Set(
+          fetchedSessions
+            .filter(s => s.instructorId && s.instructorName)
+            .map(s => ({ id: s.instructorId, name: s.instructorName }))
+        ));
+        setInstructors(uniqueInstructors);
         setSessions(fetchedSessions);
       } catch (error) {
         console.error('Error fetching sessions:', error);
@@ -143,13 +200,58 @@ const SessionsPage = () => {
     fetchSessions();
   }, [firestore]);
 
-  const events = sessions.map(session => ({
+  const filteredSessions = selectedInstructor
+    ? sessions.filter(session => session.instructorId === selectedInstructor)
+    : sessions;
+
+  const events = filteredSessions.map(session => ({
     id: session.id,
     title: session.activityName || 'Untitled Session',
     start: session.startTime,
     end: session.endTime,
-    resource: session
+    resource: session,
+    instructor: session.instructorId ? {
+      id: session.instructorId,
+      name: session.instructorName,
+      photoURL: session.instructorPhotoURL
+    } : undefined
   }));
+
+  const eventStyleGetter = (event: CalendarEvent) => {
+    const backgroundColor = event.instructor
+      ? getInstructorColor(event.instructor.id)
+      : 'rgb(249, 250, 251)'; // gray-100
+
+    return {
+      style: {
+        backgroundColor,
+        border: '1px solid rgba(0,0,0,0.1)',
+        borderRadius: '4px'
+      }
+    };
+  };
+
+  const EventComponent = ({ event }: { event: CalendarEvent }) => (
+    <div className="p-1">
+      <div className="font-medium text-gray-900">{event.title}</div>
+      {event.instructor && (
+        <div className="flex items-center mt-1 text-sm text-gray-600">
+          {event.instructor.photoURL ? (
+            <Image
+              src={event.instructor.photoURL}
+              alt={event.instructor.name}
+              width={16}
+              height={16}
+              className="rounded-full mr-1"
+            />
+          ) : (
+            <UserCircleIcon className="h-4 w-4 mr-1" />
+          )}
+          <span>{event.instructor.name}</span>
+        </div>
+      )}
+    </div>
+  );
 
   if (loading) {
     return (
@@ -205,55 +307,17 @@ const SessionsPage = () => {
           startAccessor="start"
           endAccessor="end"
           style={{ height: 700 }}
-          className="admin-calendar"
-          views={['month', 'week', 'day']}
-          defaultView={view}
+          defaultView="month"
           view={view}
-          onView={setView}
+          onView={setView as (view: View) => void}
           date={date}
           onNavigate={(newDate) => setDate(newDate)}
           components={{
-            toolbar: CustomToolbar
+            toolbar: CustomToolbar,
+            event: EventComponent
           }}
-          messages={{
-            noEventsInRange: 'No sessions scheduled for this period',
-            showMore: (total) => `+${total} more`
-          }}
-          popup
-          selectable={false}
-          onSelectEvent={(event) => {
-            router.push(`/dashboard/sessions/${event.resource.id}`);
-          }}
-          eventPropGetter={(event) => {
-            const session = event.resource;
-            const activityClass = {
-              'ENTREMIENTO_PERSONAL': 'activity-personal',
-              'KICK_BOXING': 'activity-kickboxing',
-              'SALE_FITNESS': 'activity-fitness',
-              'CLASES_DERIGIDAS': 'activity-classes'
-            }[session.activityType] || '';
-
-            const statusClass = `status-${session.status}`;
-
-            return {
-              className: `${activityClass} ${statusClass}`.trim()
-            };
-          }}
-          tooltipAccessor={(event) => {
-            const session = event.resource;
-            const activityType = {
-              'ENTREMIENTO_PERSONAL': 'Personal Training',
-              'KICK_BOXING': 'Kick Boxing',
-              'SALE_FITNESS': 'Fitness Sale',
-              'CLASES_DERIGIDAS': 'Directed Classes'
-            }[session.activityType] || session.activityType;
-
-            const status = session.status.split('_')
-              .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-              .join(' ');
-
-            return `${session.activityName}\n${activityType}\n${format(session.startTime, 'h:mm a')} - ${format(session.endTime, 'h:mm a')}\n${session.enrolledCount}/${session.capacity} enrolled\nStatus: ${status}`;
-          }}
+          eventPropGetter={eventStyleGetter}
+          onSelectEvent={(event) => router.push(`/dashboard/sessions/${event.id}`)}
         />
       </div>
     </div>

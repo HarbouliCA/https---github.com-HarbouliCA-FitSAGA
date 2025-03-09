@@ -1,53 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, addDoc, getDocs, Firestore, DocumentReference } from 'firebase/firestore';
+import { collection, addDoc, getDocs, getDoc, doc, writeBatch, Firestore, query, where, orderBy, limit } from 'firebase/firestore';
 import { useFirebase } from '@/contexts/FirebaseContext';
-import { Activity } from '@/types/activity';
-import { useRouter } from 'next/navigation';
+import { Activity, SessionFormData, ActivityType, RecurringRule } from '@/types';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import { PageNavigation } from '@/components/layout/PageNavigation';
+import { InstructorSelect } from '@/components/instructors/InstructorSelect';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-
-interface FormData {
-  activityId: string;
-  activityName: string;
-  startTime: Date;
-  endTime: Date;
-  capacity: number;
-  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
-  isRecurring: boolean;
-  recurring?: {
-    frequency: 'daily' | 'weekly' | 'monthly';
-    repeatEvery: number;
-    weekdays?: string[];
-    endDate: Date;
-    timeSlots?: {
-      startTime: string; // HH:mm format
-      endTime: string; // HH:mm format
-    }[];
-  };
-}
-
-interface SessionData {
-  activityId: string;
-  activityName: string;
-  startTime: Date;
-  endTime: Date;
-  capacity: number;
-  enrolledCount: number;
-  status: 'scheduled' | 'in_progress' | 'completed' | 'cancelled';
-  recurring: {
-    frequency: 'daily' | 'weekly' | 'monthly';
-    repeatEvery: number;
-    weekdays?: string[];
-    endDate: Date;
-    parentSessionId?: string;
-  } | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
 
 const weekdays = [
   { value: 'monday', label: 'Monday' },
@@ -59,8 +21,26 @@ const weekdays = [
   { value: 'sunday', label: 'Sunday' }
 ] as const;
 
+interface RecurringSession {
+  activityId: string;
+  activityName: string;
+  activityType: ActivityType;
+  startTime: Date;
+  endTime: Date;
+  capacity: number;
+  status: 'scheduled';
+  enrolledCount: number;
+  instructorId: string;
+  instructorName: string;
+  instructorPhotoURL?: string;
+  recurring: RecurringRule;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export default function CreateSessionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { firestore } = useFirebase();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
@@ -68,13 +48,14 @@ export default function CreateSessionPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { register, handleSubmit, control, watch, setValue, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, control, watch, setValue, formState: { errors } } = useForm<SessionFormData>({
     defaultValues: {
-      isRecurring: false,
       capacity: 10,
       status: 'scheduled',
       startTime: new Date(),
       endTime: new Date(new Date().setHours(new Date().getHours() + 1)),
+      isRecurring: false,
+      activityType: 'ENTREMIENTO_PERSONAL',
       recurring: {
         frequency: 'weekly',
         repeatEvery: 1,
@@ -86,6 +67,18 @@ export default function CreateSessionPage() {
 
   const isRecurring = watch('isRecurring');
   const frequency = watch('recurring.frequency');
+
+  // Check for instructor ID in URL params
+  useEffect(() => {
+    if (!searchParams) return;
+    
+    const instructorId = searchParams.get('instructorId');
+    const instructorName = searchParams.get('instructorName');
+    if (instructorId && instructorName) {
+      setValue('instructorId', instructorId);
+      setValue('instructorName', instructorName);
+    }
+  }, [searchParams, setValue]);
 
   useEffect(() => {
     const fetchActivities = async () => {
@@ -102,7 +95,6 @@ export default function CreateSessionPage() {
             type: data.type || 'ENTREMIENTO_PERSONAL',
             duration: Number(data.duration) || 60,
             capacity: Number(data.capacity) || 10,
-            difficulty: data.difficulty || 'beginner',
             creditValue: Number(data.creditValue) || 1,
             createdAt: data.createdAt?.toDate() || new Date(),
             updatedAt: data.updatedAt?.toDate() || new Date()
@@ -128,6 +120,7 @@ export default function CreateSessionPage() {
     if (activity) {
       setValue('activityId', activity.id);
       setValue('activityName', activity.name);
+      setValue('activityType', activity.type);
       setValue('capacity', activity.capacity);
 
       // Update end time based on activity duration
@@ -137,174 +130,309 @@ export default function CreateSessionPage() {
         endTime.setMinutes(endTime.getMinutes() + activity.duration);
         setValue('endTime', endTime);
       }
+    } else {
+      setValue('activityId', '');
+      setValue('activityName', '');
+      setValue('activityType', 'ENTREMIENTO_PERSONAL');
+      setValue('capacity', 10);
+      
+      // Reset end time to 1 hour after start time
+      const startTime = watch('startTime');
+      if (startTime) {
+        const endTime = new Date(startTime.getTime());
+        endTime.setHours(endTime.getHours() + 1);
+        setValue('endTime', endTime);
+      }
     }
   };
 
-  function generateSessionDates(data: FormData): { startTime: Date; endTime: Date }[] {
-    if (!data.recurring) return [];
-
-    const sessions: { startTime: Date; endTime: Date }[] = [];
-    const startDate = new Date(data.startTime);
-    const endDate = new Date(data.recurring.endDate);
-    const repeatEvery = data.recurring.repeatEvery;
-
-    // Get time slots or use the single time slot from form data
-    const timeSlots = data.recurring.timeSlots || [{
-      startTime: `${data.startTime.getHours().toString().padStart(2, '0')}:${data.startTime.getMinutes().toString().padStart(2, '0')}`,
-      endTime: `${data.endTime.getHours().toString().padStart(2, '0')}:${data.endTime.getMinutes().toString().padStart(2, '0')}`
-    }];
-
-    // Map weekday names to numbers
-    const weekdayMap: { [key: string]: number } = {
-      'sunday': 0, 'monday': 1, 'tuesday': 2, 'wednesday': 3,
-      'thursday': 4, 'friday': 5, 'saturday': 6
-    };
-
-    // Convert selected weekdays to numbers
-    const selectedDays = data.recurring.weekdays?.map(day => weekdayMap[day]) || [];
-
-    let currentDate = new Date(startDate);
-    while (currentDate <= endDate) {
-      if (data.recurring.frequency === 'daily') {
-        // For each day, create sessions for all time slots
-        timeSlots.forEach(slot => {
-          const [startHour, startMinute] = slot.startTime.split(':').map(Number);
-          const [endHour, endMinute] = slot.endTime.split(':').map(Number);
-
-          const sessionStart = new Date(currentDate);
-          sessionStart.setHours(startHour, startMinute, 0);
-
-          const sessionEnd = new Date(currentDate);
-          sessionEnd.setHours(endHour, endMinute, 0);
-
-          sessions.push({ startTime: sessionStart, endTime: sessionEnd });
-        });
-        currentDate.setDate(currentDate.getDate() + repeatEvery);
-      } else if (data.recurring.frequency === 'weekly' && selectedDays.length > 0) {
-        if (selectedDays.includes(currentDate.getDay())) {
-          timeSlots.forEach(slot => {
-            const [startHour, startMinute] = slot.startTime.split(':').map(Number);
-            const [endHour, endMinute] = slot.endTime.split(':').map(Number);
-
-            const sessionStart = new Date(currentDate);
-            sessionStart.setHours(startHour, startMinute, 0);
-
-            const sessionEnd = new Date(currentDate);
-            sessionEnd.setHours(endHour, endMinute, 0);
-
-            sessions.push({ startTime: sessionStart, endTime: sessionEnd });
-          });
+  // Update end time when start time changes
+  useEffect(() => {
+    const subscription = watch((value, { name }) => {
+      if (name === 'startTime' && selectedActivity) {
+        const startTime = value.startTime as Date;
+        if (startTime) {
+          const endTime = new Date(startTime.getTime());
+          endTime.setMinutes(endTime.getMinutes() + selectedActivity.duration);
+          setValue('endTime', endTime);
         }
-        currentDate.setDate(currentDate.getDate() + 1);
-      } else if (data.recurring.frequency === 'monthly') {
-        timeSlots.forEach(slot => {
-          const [startHour, startMinute] = slot.startTime.split(':').map(Number);
-          const [endHour, endMinute] = slot.endTime.split(':').map(Number);
-
-          const sessionStart = new Date(currentDate);
-          sessionStart.setHours(startHour, startMinute, 0);
-
-          const sessionEnd = new Date(currentDate);
-          sessionEnd.setHours(endHour, endMinute, 0);
-
-          sessions.push({ startTime: sessionStart, endTime: sessionEnd });
-        });
-        currentDate.setMonth(currentDate.getMonth() + repeatEvery);
       }
-    }
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, setValue, selectedActivity]);
 
-    return sessions;
-  }
-
-  const onSubmit = async (data: FormData) => {
-    if (!firestore || !selectedActivity) return;
+  const onSubmit = async (data: SessionFormData) => {
+    if (!firestore) return;
 
     setSaving(true);
     setError(null);
 
     try {
-      if (data.isRecurring && data.recurring) {
-        // For Sale Fitness, automatically set up hourly sessions from 7 AM to 12 AM
-        if (selectedActivity.type === 'SALE_FITNESS') {
-          data.recurring.timeSlots = Array.from({ length: 18 }, (_, i) => {
-            const hour = i + 7; // Start from 7 AM
-            return {
-              startTime: `${hour.toString().padStart(2, '0')}:00`,
-              endTime: `${(hour + 1).toString().padStart(2, '0')}:00`
-            };
-          });
-        }
+      // Validate activity selection
+      if (!selectedActivity) {
+        setError('Please select an activity');
+        setSaving(false);
+        return;
+      }
 
-        const sessionDates = generateSessionDates(data);
-        let parentSessionId: string | undefined = undefined;
+      // Validate instructor permissions
+      const instructorDoc = await getDoc(doc(firestore, 'instructors', data.instructorId));
+      if (!instructorDoc.exists()) {
+        setError('Selected instructor not found');
+        setSaving(false);
+        return;
+      }
 
-        for (const [index, session] of sessionDates.entries()) {
-          const sessionData: Omit<SessionData, 'id'> = {
-            activityId: data.activityId,
-            activityName: data.activityName,
-            startTime: session.startTime,
-            endTime: session.endTime,
-            capacity: Number(data.capacity),
-            enrolledCount: 0,
-            status: data.status,
-            recurring: {
-              frequency: data.recurring.frequency,
-              repeatEvery: Number(data.recurring.repeatEvery),
-              endDate: data.recurring.endDate,
-              ...(data.recurring.frequency === 'weekly' && data.recurring.weekdays?.length && {
-                weekdays: data.recurring.weekdays
-              }),
-              ...(parentSessionId ? { parentSessionId } : {})
-            },
-            createdAt: new Date(),
-            updatedAt: new Date()
-          };
+      const instructor = instructorDoc.data();
+      if (instructor.role !== 'instructor') {
+        setError('Selected user is not an instructor');
+        setSaving(false);
+        return;
+      }
 
-          const docRef = await addDoc(collection(firestore, 'sessions'), sessionData);
+      if (instructor.accessStatus === 'red') {
+        setError('Selected instructor does not have active access');
+        setSaving(false);
+        return;
+      }
+
+      // Check instructor's existing sessions for time conflicts
+      const sessionStartTime = new Date(data.startTime);
+      const sessionEndTime = new Date(data.endTime);
+
+      // Instead of querying by day range, query sessions that might overlap
+      const existingSessionsQuery = query(
+        collection(firestore, 'sessions'),
+        where('instructorId', '==', data.instructorId),
+        where('startTime', '<=', sessionEndTime),
+        orderBy('startTime', 'desc'),
+        limit(10)
+      );
+
+      try {
+        const existingSessions = await getDocs(existingSessionsQuery);
+        const hasTimeConflict = existingSessions.docs.some(doc => {
+          const session = doc.data();
+          const existingStart = session.startTime.toDate();
+          const existingEnd = session.endTime.toDate();
           
-          // Store the first session's ID as the parent ID for the series
-          if (index === 0) {
-            parentSessionId = docRef.id;
+          // Check if sessions overlap
+          return (
+            (sessionStartTime >= existingStart && sessionStartTime < existingEnd) ||
+            (sessionEndTime > existingStart && sessionEndTime <= existingEnd) ||
+            (sessionStartTime <= existingStart && sessionEndTime >= existingEnd)
+          );
+        });
+
+        if (hasTimeConflict) {
+          setError('Selected instructor has conflicting sessions during this time');
+          setSaving(false);
+          return;
+        }
+      } catch (error: any) {
+        if (error?.message?.includes('requires an index')) {
+          console.warn('Missing Firestore index, proceeding without time conflict check');
+          // Continue without time conflict check until index is created
+        } else {
+          throw error;
+        }
+      }
+
+      const baseSessionData = {
+        activityId: selectedActivity.id,
+        activityName: selectedActivity.name,
+        activityType: selectedActivity.type,
+        capacity: data.capacity,
+        status: 'scheduled' as const,
+        enrolledCount: 0,
+        instructorId: data.instructorId,
+        instructorName: data.instructorName,
+        instructorPhotoURL: instructor.photoURL,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      if (!data.isRecurring) {
+        // Create a single session
+        const sessionData = {
+          ...baseSessionData,
+          startTime: data.startTime,
+          endTime: data.endTime,
+          recurring: null
+        };
+
+        const docRef = await addDoc(collection(firestore, 'sessions'), sessionData);
+        router.push(`/dashboard/sessions/${docRef.id}`);
+        return;
+      }
+
+      // Validate recurring settings
+      if (!data.recurring?.frequency || !data.recurring?.endDate) {
+        setError('Please fill in all recurring session details');
+        setSaving(false);
+        return;
+      }
+
+      const recurring = data.recurring;
+
+      if (recurring.frequency === 'weekly' && (!recurring.weekdays || recurring.weekdays.length === 0)) {
+        setError('Please select at least one weekday for weekly recurring sessions');
+        setSaving(false);
+        return;
+      }
+
+      // Handle recurring sessions
+      const sessions: Array<Omit<RecurringSession, 'recurring'> & { recurring: Omit<RecurringRule, 'parentSessionId'> }> = [];
+      const startDate = new Date(data.startTime);
+      const endDate = new Date(recurring.endDate);
+      const repeatEvery = recurring.repeatEvery || 1;
+
+      // Validate date range
+      if (endDate < startDate) {
+        setError('End date cannot be before start date');
+        setSaving(false);
+        return;
+      }
+
+      // Maximum 3 months of recurring sessions
+      const maxEndDate = new Date(startDate);
+      maxEndDate.setMonth(maxEndDate.getMonth() + 3);
+      if (endDate > maxEndDate) {
+        setError('Recurring sessions can only be created for up to 3 months');
+        setSaving(false);
+        return;
+      }
+
+      let currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dayOfWeek = currentDate.getDay();
+        const weekdayName = weekdays[dayOfWeek].value;
+        
+        const shouldCreateSession = recurring.frequency === 'daily' ||
+          (recurring.frequency === 'weekly' && recurring.weekdays?.includes(weekdayName)) ||
+          (recurring.frequency === 'monthly' && currentDate.getDate() === startDate.getDate());
+
+        if (shouldCreateSession) {
+          // Create session at current date
+          const sessionStartTime = new Date(currentDate);
+          sessionStartTime.setHours(startDate.getHours(), startDate.getMinutes());
+          
+          const sessionEndTime = new Date(sessionStartTime);
+          const duration = data.endTime.getTime() - data.startTime.getTime();
+          sessionEndTime.setTime(sessionStartTime.getTime() + duration);
+
+          // Check if session time is in the future
+          if (sessionStartTime > new Date()) {
+            const recurringRule = {
+              frequency: recurring.frequency,
+              repeatEvery,
+              weekdays: recurring.weekdays || [],
+              endDate: recurring.endDate
+            };
+
+            sessions.push({
+              ...baseSessionData,
+              startTime: sessionStartTime,
+              endTime: sessionEndTime,
+              recurring: recurringRule
+            });
           }
         }
 
-        router.push('/dashboard/sessions');
-      } else {
-        // Handle single session creation
-        const sessionData: Omit<SessionData, 'id'> = {
-          activityId: data.activityId,
-          activityName: data.activityName,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          capacity: Number(data.capacity),
-          enrolledCount: 0,
-          status: data.status,
-          recurring: null,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
-
-        await addDoc(collection(firestore, 'sessions'), sessionData);
-        router.push('/dashboard/sessions');
+        // Increment date based on frequency
+        switch (recurring.frequency) {
+          case 'daily':
+            currentDate.setDate(currentDate.getDate() + repeatEvery);
+            break;
+          case 'weekly':
+            currentDate.setDate(currentDate.getDate() + 1); // Check each day for weekly recurrence
+            break;
+          case 'monthly':
+            currentDate.setMonth(currentDate.getMonth() + repeatEvery);
+            break;
+        }
       }
-    } catch (error) {
-      console.error('Error creating session:', error);
-      setError('Failed to create session');
-    } finally {
+
+      if (sessions.length === 0) {
+        setError('No valid future sessions were created. Please check your recurring settings.');
+        setSaving(false);
+        return;
+      }
+
+      if (sessions.length > 50) {
+        setError('Too many recurring sessions. Please reduce the date range or frequency.');
+        setSaving(false);
+        return;
+      }
+
+      // Check for time conflicts across all recurring sessions
+      const allSessionTimes = sessions.map(session => ({
+        start: session.startTime,
+        end: session.endTime
+      }));
+
+      const hasRecurringConflict = allSessionTimes.some((session1, index1) =>
+        allSessionTimes.some((session2, index2) =>
+          index1 !== index2 && (
+            (session1.start >= session2.start && session1.start < session2.end) ||
+            (session1.end > session2.start && session1.end <= session2.end) ||
+            (session1.start <= session2.start && session1.end >= session2.end)
+          )
+        )
+      );
+
+      if (hasRecurringConflict) {
+        setError('Some recurring sessions have time conflicts. Please check your recurring settings.');
+        setSaving(false);
+        return;
+      }
+
+      // Create all sessions and link them
+      const batch = writeBatch(firestore);
+      
+      // Create first session
+      const firstSessionRef = doc(collection(firestore, 'sessions'));
+      const firstSession = {
+        ...sessions[0],
+        recurring: {
+          ...sessions[0].recurring,
+          parentSessionId: null // First session has no parent
+        }
+      };
+      batch.set(firstSessionRef, firstSession);
+
+      // Create child sessions
+      for (let i = 1; i < sessions.length; i++) {
+        const docRef = doc(collection(firestore, 'sessions'));
+        const session = {
+          ...sessions[i],
+          recurring: {
+            ...sessions[i].recurring,
+            parentSessionId: firstSessionRef.id // Link to parent session
+          }
+        };
+        batch.set(docRef, session);
+      }
+
+      // Commit all sessions at once
+      await batch.commit();
+      router.push(`/dashboard/sessions/${firstSessionRef.id}`);
+    } catch (err) {
+      console.error('Error creating session(s):', err);
+      setError('Failed to create session(s)');
       setSaving(false);
     }
   };
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <PageNavigation 
-          title="Create Session"
-          backUrl="/dashboard/sessions"
-        />
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200 p-8">
-          <div className="flex justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary-600"></div>
+      <div className="container mx-auto px-4 py-6">
+        <PageNavigation title="Create Session" />
+        <div className="mt-6 animate-pulse">
+          <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+          <div className="space-y-3 mt-4">
+            <div className="h-10 bg-gray-200 rounded"></div>
+            <div className="h-10 bg-gray-200 rounded"></div>
           </div>
         </div>
       </div>
@@ -312,28 +440,28 @@ export default function CreateSessionPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageNavigation 
-        title="Create Session"
-        backUrl="/dashboard/sessions"
-      />
+    <div className="container mx-auto px-4 py-6">
+      <PageNavigation title="Create Session" />
+      
+      <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-6 max-w-2xl">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">
+            {error}
+          </div>
+        )}
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-6">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              <p>{error}</p>
-            </div>
-          )}
-
+        <div className="space-y-4 bg-white shadow rounded-lg p-6">
+          <h2 className="text-lg font-medium text-gray-900">Session Details</h2>
+          
           <div className="space-y-4">
             <div>
-              <label htmlFor="activityId" className="block text-sm font-medium text-gray-700">Activity</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Activity
+              </label>
               <select
-                id="activityId"
-                {...register('activityId', { required: true })}
+                className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
                 onChange={handleActivityChange}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                required
               >
                 <option value="">Select an activity</option>
                 {activities.map((activity) => (
@@ -342,14 +470,28 @@ export default function CreateSessionPage() {
                   </option>
                 ))}
               </select>
-              {errors.activityId && (
-                <p className="mt-1 text-sm text-red-600">Please select an activity</p>
-              )}
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Instructor
+              </label>
+              <InstructorSelect
+                value={watch('instructorId')}
+                onChange={(id, name) => {
+                  setValue('instructorId', id);
+                  setValue('instructorName', name);
+                }}
+                required
+                className="mt-1"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">Start Time</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Start Time
+                </label>
                 <Controller
                   control={control}
                   name="startTime"
@@ -358,22 +500,26 @@ export default function CreateSessionPage() {
                       selected={field.value}
                       onChange={(date) => {
                         field.onChange(date);
-                        if (selectedActivity && date) {
+                        if (selectedActivity?.duration && date) {
                           const endTime = new Date(date.getTime());
                           endTime.setMinutes(endTime.getMinutes() + selectedActivity.duration);
                           setValue('endTime', endTime);
                         }
                       }}
                       showTimeSelect
+                      timeFormat="HH:mm"
+                      timeIntervals={15}
                       dateFormat="MMMM d, yyyy h:mm aa"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                      className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
                     />
                   )}
                 />
               </div>
 
               <div>
-                <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">End Time</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  End Time
+                </label>
                 <Controller
                   control={control}
                   name="endTime"
@@ -382,32 +528,36 @@ export default function CreateSessionPage() {
                       selected={field.value}
                       onChange={field.onChange}
                       showTimeSelect
+                      timeFormat="HH:mm"
+                      timeIntervals={15}
                       dateFormat="MMMM d, yyyy h:mm aa"
-                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                      className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+                      minDate={watch('startTime')}
                     />
                   )}
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  Capacity
+                </label>
+                <input
+                  type="number"
+                  {...register('capacity')}
+                  min={1}
+                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
+                />
+              </div>
             </div>
 
-            <div>
-              <label htmlFor="capacity" className="block text-sm font-medium text-gray-700">Capacity</label>
-              <input
-                type="number"
-                {...register('capacity', { required: true, min: 1 })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-              />
-              {errors.capacity && (
-                <p className="mt-1 text-sm text-red-600">Please enter a valid capacity</p>
-              )}
-            </div>
-
-            <div>
+            <div className="pt-4 border-t border-gray-200">
               <div className="flex items-center">
                 <input
                   type="checkbox"
                   {...register('isRecurring')}
-                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  id="isRecurring"
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
                 <label htmlFor="isRecurring" className="ml-2 block text-sm font-medium text-gray-700">
                   Recurring Session
@@ -416,12 +566,14 @@ export default function CreateSessionPage() {
             </div>
 
             {isRecurring && (
-              <div className="space-y-4 border-t border-gray-200 pt-4">
+              <div className="space-y-4 pt-4">
                 <div>
-                  <label htmlFor="recurring.frequency" className="block text-sm font-medium text-gray-700">Frequency</label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    Frequency
+                  </label>
                   <select
                     {...register('recurring.frequency')}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
                   >
                     <option value="daily">Daily</option>
                     <option value="weekly">Weekly</option>
@@ -430,42 +582,47 @@ export default function CreateSessionPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="recurring.repeatEvery" className="block text-sm font-medium text-gray-700">
+                  <label className="block text-sm font-medium text-gray-700">
                     Repeat Every
                   </label>
-                  <div className="mt-1 flex rounded-md shadow-sm">
+                  <div className="mt-1 flex items-center">
                     <input
                       type="number"
-                      {...register('recurring.repeatEvery', { min: 1 })}
-                      className="block w-full rounded-none rounded-l-md border-gray-300 focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                      {...register('recurring.repeatEvery')}
+                      min={1}
+                      className="block w-24 pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
                     />
-                    <span className="inline-flex items-center rounded-r-md border border-l-0 border-gray-300 bg-gray-50 px-3 text-gray-500 sm:text-sm">
-                      {frequency === 'daily' ? 'days' : frequency === 'weekly' ? 'weeks' : 'months'}
+                    <span className="ml-2 text-sm text-gray-500">
+                      {frequency === 'daily' ? 'Days' : frequency === 'weekly' ? 'Weeks' : 'Months'}
                     </span>
                   </div>
                 </div>
 
                 {frequency === 'weekly' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Repeat On</label>
-                    <div className="mt-2 space-y-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Repeat On
+                    </label>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                       {weekdays.map((day) => (
-                        <div key={day.value} className="flex items-center">
+                        <label key={day.value} className="inline-flex items-center">
                           <input
                             type="checkbox"
-                            value={day.value}
                             {...register('recurring.weekdays')}
-                            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            value={day.value}
+                            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                           />
-                          <label className="ml-2 text-sm text-gray-700">{day.label}</label>
-                        </div>
+                          <span className="ml-2 text-sm text-gray-700">{day.label}</span>
+                        </label>
                       ))}
                     </div>
                   </div>
                 )}
 
                 <div>
-                  <label htmlFor="recurring.endDate" className="block text-sm font-medium text-gray-700">End Date</label>
+                  <label className="block text-sm font-medium text-gray-700">
+                    End Date
+                  </label>
                   <Controller
                     control={control}
                     name="recurring.endDate"
@@ -473,9 +630,9 @@ export default function CreateSessionPage() {
                       <DatePicker
                         selected={field.value}
                         onChange={field.onChange}
-                        minDate={new Date()}
+                        minDate={watch('startTime')}
                         dateFormat="MMMM d, yyyy"
-                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                        className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"
                       />
                     )}
                   />
@@ -483,25 +640,25 @@ export default function CreateSessionPage() {
               </div>
             )}
           </div>
+        </div>
 
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={saving}
-              className="btn-primary"
-            >
-              {saving ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
-                  Creating...
-                </>
-              ) : (
-                'Create Session'
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="flex justify-end space-x-3">
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="px-4 py-2 text-sm font-medium text-white bg-primary-600 border border-transparent rounded-md shadow-sm hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saving ? 'Creating...' : 'Create Session'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
