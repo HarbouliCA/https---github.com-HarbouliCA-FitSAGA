@@ -17,9 +17,13 @@ export interface PageNavigationProps {
   actions?: PageNavigationAction[];
   backUrl?: string;
   onBack?: () => void;
+  backButton?: {
+    href: string;
+    label: string;
+  };
 }
 
-export function PageNavigation({ title, actions = [], backUrl, onBack }: PageNavigationProps) {
+export function PageNavigation({ title, actions = [], backUrl, onBack, backButton }: PageNavigationProps) {
   const router = useRouter();
 
   const handleBack = () => {
@@ -27,6 +31,8 @@ export function PageNavigation({ title, actions = [], backUrl, onBack }: PageNav
       onBack();
     } else if (backUrl) {
       router.push(backUrl);
+    } else if (backButton?.href) {
+      router.push(backButton.href);
     } else {
       router.back();
     }
@@ -40,11 +46,11 @@ export function PageNavigation({ title, actions = [], backUrl, onBack }: PageNav
           className="mr-4 p-1 rounded-full hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
           <ArrowLeftIcon className="h-5 w-5 text-gray-500" />
-          <span className="sr-only">Back</span>
+          <span className="sr-only">{backButton?.label || 'Back'}</span>
         </button>
         <h1 className="text-2xl font-semibold text-gray-900 truncate">{title}</h1>
       </div>
-      {actions.length > 0 && (
+      {actions && actions.length > 0 && (
         <div className="flex items-center space-x-3">
           {actions.map((action, index) => {
             const Icon = action.icon;

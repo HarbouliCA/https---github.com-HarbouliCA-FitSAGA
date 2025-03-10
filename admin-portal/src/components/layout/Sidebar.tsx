@@ -13,10 +13,12 @@ import {
   Cog6ToothIcon,
   ArrowLeftOnRectangleIcon,
   AcademicCapIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline';
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+  { name: 'Clients', href: '/dashboard/clients', icon: UserGroupIcon },
   { name: 'Users', href: '/dashboard/users', icon: UsersIcon },
   { name: 'Activities', href: '/dashboard/activities', icon: ClipboardDocumentListIcon },
   { name: 'Sessions', href: '/dashboard/sessions', icon: CalendarIcon },

@@ -16,6 +16,8 @@ function getFirebaseAdmin() {
           clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
           privateKey: privateKey,
         }),
+        databaseURL: `https://${process.env.FIREBASE_PROJECT_ID}.firebaseio.com`,
+        storageBucket: `${process.env.FIREBASE_PROJECT_ID}.appspot.com`,
       });
     } catch (error: any) {
       console.error('Firebase admin initialization error:', error);
@@ -29,14 +31,27 @@ function getFirebaseAdmin() {
 // Initialize services with proper error handling
 let adminAuth: admin.auth.Auth;
 let adminFirestore: admin.firestore.Firestore;
+let adminStorage: admin.storage.Storage;
 
 try {
   const adminApp = getFirebaseAdmin();
   adminAuth = adminApp.auth();
   adminFirestore = adminApp.firestore();
+  adminStorage = adminApp.storage();
 } catch (error) {
   console.error('Failed to initialize Firebase Admin services:', error);
   throw error; // Re-throw to handle it in the API routes
 }
 
+// Export a function to get admin SDK instances
+export function initAdminSDK() {
+  return {
+    admin: getFirebaseAdmin(),
+    auth: adminAuth,
+    db: adminFirestore,
+    storage: adminStorage
+  };
+}
+
+// For backward compatibility
 export { adminAuth, adminFirestore };

@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { format } from 'date-fns';
-import { PlusIcon, CalendarIcon, TrashIcon, UserCircleIcon } from '@heroicons/react/24/outline';
+import { format, isSameDay, isSameHour, isSameMinute } from 'date-fns';
+import { PlusIcon, CalendarIcon, TrashIcon, UserCircleIcon, ClockIcon } from '@heroicons/react/24/outline';
 import { PageNavigation } from '@/components/layout/PageNavigation';
 import { useFirebase } from '@/contexts/FirebaseContext';
 import { collection, getDocs, deleteDoc, doc, writeBatch, query, where, getDoc, documentId, limit } from 'firebase/firestore';
@@ -334,10 +334,69 @@ export default function SessionListPage() {
     }
   };
 
+  // Group sessions by date for better display of overlapping sessions
+  const groupSessionsByDate = (sessions: Session[]) => {
+    const groupedSessions: Record<string, Session[]> = {};
+    
+    sessions.forEach(session => {
+      // Create a key based on the date of the session
+      const dateKey = format(session.startTime, 'yyyy-MM-dd');
+      
+      if (!groupedSessions[dateKey]) {
+        groupedSessions[dateKey] = [];
+      }
+      
+      groupedSessions[dateKey].push(session);
+    });
+    
+    // Sort the groups by date (newest first)
+    return Object.entries(groupedSessions)
+      .sort(([keyA], [keyB]) => keyB.localeCompare(keyA))
+      .map(([key, sessions]) => ({
+        key,
+        date: sessions[0].startTime,
+        // Sort sessions by start time
+        sessions: sessions.sort((a, b) => a.startTime.getTime() - b.startTime.getTime())
+      }));
+  };
+
+  // Group sessions by time within a date
+  const groupSessionsByTime = (sessions: Session[]) => {
+    const groupedSessions: Record<string, Session[]> = {};
+    
+    sessions.forEach(session => {
+      // Create a key based on the hour and minute of the session
+      const timeKey = format(session.startTime, 'HH:mm');
+      
+      if (!groupedSessions[timeKey]) {
+        groupedSessions[timeKey] = [];
+      }
+      
+      groupedSessions[timeKey].push(session);
+    });
+    
+    // Sort the groups by time (earliest first)
+    return Object.entries(groupedSessions)
+      .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+      .map(([key, sessions]) => ({
+        key,
+        time: sessions[0].startTime,
+        // Sort sessions alphabetically within the same time slot
+        sessions: sessions.sort((a, b) => {
+          const titleA = a.title || a.activityName || '';
+          const titleB = b.title || b.activityName || '';
+          return titleA.localeCompare(titleB);
+        })
+      }));
+  };
+
   // Filter sessions by instructor if filter is set
   const filteredSessions = instructorFilter
     ? sessions.filter(session => session.instructorId === instructorFilter)
     : sessions;
+
+  // Group the filtered sessions by date first
+  const groupedSessionsByDate = groupSessionsByDate(filteredSessions);
 
   // Get unique instructors for filter dropdown
   const uniqueInstructors = Array.from(
@@ -409,191 +468,223 @@ export default function SessionListPage() {
             </div>
           </div>
 
-          {/* Sessions table */}
+          {/* Sessions list with grouping */}
           <div className="bg-white shadow overflow-hidden sm:rounded-md">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  {/* Select all checkbox - only show if admin */}
-                  {isAdmin && (
-                    <th scope="col" className="relative w-12 px-6 sm:w-16 sm:px-8">
-                      <input
-                        type="checkbox"
-                        className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 sm:left-6"
-                        ref={selectAllCheckboxRef}
-                        checked={selectedSessions.length === filteredSessions.length && filteredSessions.length > 0}
-                        onChange={(e) => {
-                          const checked = e.target.checked;
-                          setSelectedSessions(
-                            checked ? filteredSessions.map(session => session.id) : []
-                          );
-                        }}
-                      />
-                    </th>
-                  )}
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Session
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date & Time
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Instructor
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Capacity
-                  </th>
-                  <th scope="col" className="relative px-6 py-3">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {loading ? (
-                  <tr>
-                    <td colSpan={isAdmin ? 7 : 6} className="px-6 py-4 text-center text-sm text-gray-500">
-                      <div className="flex justify-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-                      </div>
-                    </td>
-                  </tr>
-                ) : error ? (
-                  <tr>
-                    <td colSpan={isAdmin ? 7 : 6} className="px-6 py-4 text-center text-sm text-red-500">
-                      {error}
-                    </td>
-                  </tr>
-                ) : filteredSessions.length === 0 ? (
-                  <tr>
-                    <td colSpan={isAdmin ? 7 : 6} className="px-6 py-4 text-center text-sm text-gray-500">
-                      No sessions found
-                    </td>
-                  </tr>
-                ) : (
-                  filteredSessions.map((session) => (
-                    <tr key={session.id}>
-                      {/* Checkbox column - only show if admin */}
-                      {isAdmin && (
-                        <td className="relative w-12 px-6 sm:w-16 sm:px-8">
-                          <input
-                            type="checkbox"
-                            className="absolute left-4 top-1/2 -mt-2 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 sm:left-6"
-                            value={session.id}
-                            checked={selectedSessions.includes(session.id)}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setSelectedSessions(
-                                checked
-                                  ? [...selectedSessions, session.id]
-                                  : selectedSessions.filter(id => id !== session.id)
-                              );
-                            }}
-                          />
-                        </td>
-                      )}
-                      {/* Session info */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="ml-4">
-                            <div className="text-sm font-medium text-gray-900">
-                              {session.title}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {activityDisplayNames[session.activityType]}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      {/* Date & Time */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">
-                          {format(session.startTime, 'MMM d, yyyy')}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          {format(session.startTime, 'h:mm a')} - {format(session.endTime, 'h:mm a')}
-                        </div>
-                      </td>
-                      {/* Instructor */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          {session.instructorPhotoURL ? (
-                            <Image
-                              src={session.instructorPhotoURL}
-                              alt={session.instructorName}
-                              width={32}
-                              height={32}
-                              className="h-8 w-8 rounded-full"
-                            />
-                          ) : (
-                            <UserCircleIcon className="h-8 w-8 text-gray-400" />
-                          )}
-                          <div className="ml-3">
-                            <div className="text-sm font-medium text-gray-900">
-                              {session.instructorName}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      {/* Status */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                          ${session.status === 'scheduled' ? 'bg-green-100 text-green-800' : 
-                            session.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 
-                            session.status === 'completed' ? 'bg-gray-100 text-gray-800' : 
-                            'bg-red-100 text-red-800'}`}
-                        >
-                          {session.status.charAt(0).toUpperCase() + session.status.slice(1).replace('_', ' ')}
-                        </span>
-                      </td>
-                      {/* Capacity */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex items-center">
-                          <span>{session.enrolledCount} / {session.capacity}</span>
-                          {session.enrolledCount >= session.capacity && (
-                            <span className="ml-2 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
-                              Full
+            {loading ? (
+              <div className="px-6 py-4 text-center">
+                <div className="flex justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+                </div>
+              </div>
+            ) : error ? (
+              <div className="px-6 py-4 text-center text-red-500">
+                {error}
+              </div>
+            ) : filteredSessions.length === 0 ? (
+              <div className="px-6 py-4 text-center text-gray-500">
+                No sessions found
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {groupedSessionsByDate.map(dateGroup => (
+                  <div key={dateGroup.key} className="bg-white">
+                    {/* Date header */}
+                    <div className="bg-gray-50 px-6 py-3 flex items-center">
+                      <CalendarIcon className="h-5 w-5 text-gray-500 mr-2" />
+                      <h3 className="text-sm font-medium text-gray-700">
+                        {format(dateGroup.date, 'EEEE, MMMM d, yyyy')}
+                      </h3>
+                    </div>
+                    
+                    {/* Group sessions by time within this date */}
+                    {groupSessionsByTime(dateGroup.sessions).map(timeGroup => (
+                      <div key={`${dateGroup.key}_${timeGroup.key}`} className="border-t border-gray-100">
+                        {/* Time header */}
+                        <div className="bg-gray-50 px-6 py-2 flex items-center">
+                          <ClockIcon className="h-4 w-4 text-gray-500 mr-2" />
+                          <span className="text-sm text-gray-500">
+                            {format(timeGroup.time, 'h:mm a')}
+                          </span>
+                          {timeGroup.sessions.length > 1 && (
+                            <span className="ml-2 px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                              {timeGroup.sessions.length} sessions
                             </span>
                           )}
                         </div>
-                      </td>
-                      {/* Actions */}
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <Link
-                          href={`/dashboard/sessions/${session.id}`}
-                          className="text-primary-600 hover:text-primary-900"
-                        >
-                          View
-                        </Link>
-                        {isAdmin && (
-                          <>
-                            <span className="mx-2 text-gray-300">|</span>
-                            <Link
-                              href={`/dashboard/sessions/${session.id}/edit`}
-                              className="text-primary-600 hover:text-primary-900"
-                            >
-                              Edit
-                            </Link>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                        
+                        {/* Sessions table for this time slot */}
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              {/* Select all checkbox - only show if admin */}
+                              {isAdmin && (
+                                <th scope="col" className="w-12 px-3 py-2">
+                                  <div className="flex items-center">
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                      checked={timeGroup.sessions.every(s => selectedSessions.includes(s.id))}
+                                      onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        if (checked) {
+                                          // Add all sessions in this time group that aren't already selected
+                                          const sessionsToAdd = timeGroup.sessions
+                                            .filter(s => !selectedSessions.includes(s.id))
+                                            .map(s => s.id);
+                                          setSelectedSessions([...selectedSessions, ...sessionsToAdd]);
+                                        } else {
+                                          // Remove all sessions in this time group
+                                          setSelectedSessions(
+                                            selectedSessions.filter(id => !timeGroup.sessions.some(s => s.id === id))
+                                          );
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                </th>
+                              )}
+                              <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Session
+                              </th>
+                              <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Instructor
+                              </th>
+                              <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                              </th>
+                              <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Capacity
+                              </th>
+                              <th scope="col" className="relative px-3 py-2 text-right">
+                                <span className="sr-only">Actions</span>
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-100">
+                            {timeGroup.sessions.map((session, index) => (
+                              <tr 
+                                key={session.id} 
+                                className={`${index % 2 === 1 ? 'bg-gray-50' : ''} hover:bg-gray-100`}
+                              >
+                                {/* Checkbox column - only show if admin */}
+                                {isAdmin && (
+                                  <td className="w-12 px-3 py-3">
+                                    <div className="flex items-center">
+                                      <input
+                                        type="checkbox"
+                                        className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                        value={session.id}
+                                        checked={selectedSessions.includes(session.id)}
+                                        onChange={(e) => {
+                                          const checked = e.target.checked;
+                                          setSelectedSessions(
+                                            checked
+                                              ? [...selectedSessions, session.id]
+                                              : selectedSessions.filter(id => id !== session.id)
+                                          );
+                                        }}
+                                      />
+                                    </div>
+                                  </td>
+                                )}
+                                {/* Session info */}
+                                <td className="px-3 py-3">
+                                  <div className="flex items-center">
+                                    <div>
+                                      <div className="text-sm font-medium text-gray-900">
+                                        {session.title || session.activityName}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        {activityDisplayNames[session.activityType]}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        {format(session.startTime, 'h:mm a')} - {format(session.endTime, 'h:mm a')}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                                {/* Instructor */}
+                                <td className="px-3 py-3">
+                                  <div className="flex items-center">
+                                    {session.instructorPhotoURL ? (
+                                      <Image
+                                        src={session.instructorPhotoURL}
+                                        alt={session.instructorName}
+                                        width={28}
+                                        height={28}
+                                        className="h-7 w-7 rounded-full"
+                                      />
+                                    ) : (
+                                      <UserCircleIcon className="h-7 w-7 text-gray-400" />
+                                    )}
+                                    <div className="ml-2">
+                                      <div className="text-sm font-medium text-gray-900">
+                                        {session.instructorName}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                                {/* Status */}
+                                <td className="px-3 py-3">
+                                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                    ${session.status === 'scheduled' ? 'bg-green-100 text-green-800' : 
+                                      session.status === 'in_progress' ? 'bg-blue-100 text-blue-800' : 
+                                      session.status === 'completed' ? 'bg-gray-100 text-gray-800' : 
+                                      'bg-red-100 text-red-800'}`}
+                                  >
+                                    {session.status.charAt(0).toUpperCase() + session.status.slice(1).replace('_', ' ')}
+                                  </span>
+                                </td>
+                                {/* Capacity */}
+                                <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
+                                  <div className="flex items-center">
+                                    <span>{session.enrolledCount} / {session.capacity}</span>
+                                    {session.enrolledCount >= session.capacity && (
+                                      <span className="ml-1 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">
+                                        Full
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                {/* Actions */}
+                                <td className="px-3 py-3 whitespace-nowrap text-right text-sm font-medium">
+                                  <Link
+                                    href={`/dashboard/sessions/${session.id}`}
+                                    className="text-primary-600 hover:text-primary-900"
+                                  >
+                                    View
+                                  </Link>
+                                  {isAdmin && (
+                                    <>
+                                      <span className="mx-2 text-gray-300">|</span>
+                                      <Link
+                                        href={`/dashboard/sessions/${session.id}/edit`}
+                                        className="text-primary-600 hover:text-primary-900"
+                                      >
+                                        Edit
+                                      </Link>
+                                    </>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </main>
 
       {/* Delete confirmation modal */}
       <Modal
-        open={showDeleteModal}
+        isOpen={showDeleteModal}
         onClose={() => !isDeleting && setShowDeleteModal(false)}
         title="Delete Sessions"
-        description={`Are you sure you want to delete ${selectedSessions.length} session${selectedSessions.length === 1 ? '' : 's'}? This action cannot be undone.`}
         actions={[
           {
             label: 'Cancel',
@@ -608,7 +699,12 @@ export default function SessionListPage() {
             variant: 'danger'
           }
         ]}
-      />
+      >
+        <p className="text-sm text-gray-500">
+          Are you sure you want to delete {selectedSessions.length} session{selectedSessions.length === 1 ? '' : 's'}? This action cannot be undone.
+        </p>
+      </Modal>
+
     </div>
   );
 }

@@ -217,3 +217,5 @@ export interface InstructorFormData {
   bankDetails: BankDetails;
   photoURL?: string;
 }
+
+export * from './client';
