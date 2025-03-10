@@ -39,10 +39,22 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   const [creditReason, setCreditReason] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAdjustingCredits, setIsAdjustingCredits] = useState(false);
+  
+  // Store clientId in state to avoid direct params access in useEffect
+  const [clientId, setClientId] = useState<string>('');
+
+  useEffect(() => {
+    // Safely extract and store the client ID from params
+    if (params && params.id) {
+      setClientId(params.id);
+    }
+  }, [params]);
 
   const fetchClientData = async () => {
+    if (!clientId) return;
+    
     try {
-      const response = await fetch(`/api/clients/${params.id}`);
+      const response = await fetch(`/api/clients/${clientId}`);
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -65,14 +77,16 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   };
 
   useEffect(() => {
-    fetchClientData();
-  }, [params.id]);
+    if (clientId) {
+      fetchClientData();
+    }
+  }, [clientId]);
 
   const handleToggleAccess = async (newStatus: 'active' | 'suspended' | 'inactive') => {
-    if (!client) return;
+    if (!client || !clientId) return;
     
     try {
-      const response = await fetch(`/api/clients/${client.id}/access`, {
+      const response = await fetch(`/api/clients/${clientId}/access`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -96,11 +110,11 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   };
 
   const handleDelete = async () => {
-    if (!client) return;
+    if (!client || !clientId) return;
     
     setIsDeleting(true);
     try {
-      const response = await fetch(`/api/clients/${client.id}`, {
+      const response = await fetch(`/api/clients/${clientId}`, {
         method: 'DELETE',
       });
       
@@ -121,11 +135,11 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   };
 
   const handleAdjustCredits = async () => {
-    if (!client || creditAdjustment === 0) return;
+    if (!client || !clientId || creditAdjustment === 0) return;
     
     setIsAdjustingCredits(true);
     try {
-      const response = await fetch(`/api/clients/${client.id}/credits`, {
+      const response = await fetch(`/api/clients/${clientId}/credits`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -184,7 +198,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           {
             label: 'Edit',
             icon: PencilIcon,
-            href: `/dashboard/clients/${client.id}/edit`,
+            href: `/dashboard/clients/${clientId}/edit`,
             variant: 'secondary'
           },
           {
@@ -364,7 +378,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
           {recentBookings.length > 0 && (
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
               <Link
-                href={`/dashboard/clients/${client.id}/bookings`}
+                href={`/dashboard/clients/${clientId}/bookings`}
                 className="text-sm font-medium text-primary-600 hover:text-primary-500"
               >
                 View all bookings

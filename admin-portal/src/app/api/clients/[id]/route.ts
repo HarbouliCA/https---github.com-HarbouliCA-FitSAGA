@@ -57,10 +57,13 @@ interface ClientData {
 // GET /api/clients/[id] - Get a specific client
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    // Ensure params.id is available before using it
+    // Get the client ID from context params - properly await it
+    const params = await context.params;
+    
+    // Ensure id is available
     if (!params || !params.id) {
       return NextResponse.json(
         { error: 'Client ID is required' },
@@ -150,10 +153,13 @@ export async function GET(
 // PUT /api/clients/[id] - Update a specific client
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    // Ensure params.id is available before using it
+    // Get the client ID from context params - properly await it
+    const params = await context.params;
+    
+    // Ensure id is available
     if (!params || !params.id) {
       return NextResponse.json(
         { error: 'Client ID is required' },
@@ -209,10 +215,13 @@ export async function PUT(
 // DELETE /api/clients/[id] - Delete a specific client
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    // Ensure params.id is available before using it
+    // Get the client ID from context params - properly await it
+    const params = await context.params;
+    
+    // Ensure id is available
     if (!params || !params.id) {
       return NextResponse.json(
         { error: 'Client ID is required' },

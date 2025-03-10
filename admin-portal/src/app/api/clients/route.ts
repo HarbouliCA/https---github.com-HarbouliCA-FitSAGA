@@ -135,76 +135,122 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if email already exists
-    const emailCheck = await adminAuth.getUserByEmail(data.email).catch(() => null);
-    if (emailCheck) {
+    try {
+      const emailCheck = await adminAuth.getUserByEmail(data.email);
+      
+      // If we get here, the email exists and is active
       return NextResponse.json(
         { error: 'Email already exists' },
         { status: 409 }
       );
+    } catch (authError: any) {
+      // If the error is auth/user-not-found, the email is available
+      // Otherwise, there might be another issue with Firebase Auth
+      if (authError.code !== 'auth/user-not-found') {
+        console.error('Error checking email:', authError);
+        if (authError.code === 'auth/email-already-exists') {
+          return NextResponse.json(
+            { error: 'Email already exists but may be in deleted state. Please try a different email or wait a few minutes.' },
+            { status: 409 }
+          );
+        }
+        return NextResponse.json(
+          { error: 'Error checking email availability' },
+          { status: 500 }
+        );
+      }
+      // If we get here, the email is available
     }
     
     // Create user in Firebase Auth
-    const userRecord = await adminAuth.createUser({
-      email: data.email,
-      displayName: data.name,
-      photoURL: data.profileImage,
-      disabled: data.accessStatus === 'suspended',
-    });
-    
-    // Set custom claims based on role
-    await adminAuth.setCustomUserClaims(userRecord.uid, {
-      role: data.role || 'client'
-    });
-    
-    // Create client document in Firestore
-    const now = Timestamp.now();
-    const dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
-    const subscriptionExpiry = data.subscriptionExpiry ? new Date(data.subscriptionExpiry) : null;
-    const clientData = {
-      email: data.email,
-      name: data.name,
-      profileImage: data.profileImage || null,
-      dateOfBirth: dateOfBirth ? Timestamp.fromDate(dateOfBirth) : null,
-      gender: data.gender || 'other',
-      height: data.height || null,
-      weight: data.weight || null,
-      address: data.address || null,
-      telephone: data.telephone || null,
-      role: data.role || 'client',
-      memberSince: now,
-      lastActive: now,
-      accessStatus: data.accessStatus || 'active',
-      credits: data.credits || 0,
-      fidelityScore: data.fidelityScore || 0,
-      subscriptionTier: data.subscriptionTier || null,
-      subscriptionExpiry: subscriptionExpiry ? Timestamp.fromDate(subscriptionExpiry) : null,
-      observations: data.observations || null,
-      fitnessGoals: data.fitnessGoals || [],
-      onboardingCompleted: false,
-      notificationSettings: data.notificationSettings || {
-        email: true,
-        push: true,
-        sms: false
-      },
-      createdAt: now,
-      updatedAt: now
-    };
-    
-    await adminDb.collection('clients').doc(userRecord.uid).set(clientData);
-    
-    // Convert Timestamps back to ISO strings for response
-    const responseData = {
-      id: userRecord.uid,
-      ...clientData,
-      dateOfBirth: clientData.dateOfBirth?.toDate().toISOString() || null,
-      memberSince: clientData.memberSince.toDate().toISOString(),
-      lastActive: clientData.lastActive.toDate().toISOString(),
-      subscriptionExpiry: clientData.subscriptionExpiry?.toDate().toISOString() || null,
-      createdAt: clientData.createdAt.toDate().toISOString(),
-      updatedAt: clientData.updatedAt.toDate().toISOString()
-    };
-    
-    return NextResponse.json(responseData);
+    try {
+      const userRecord = await adminAuth.createUser({
+        email: data.email,
+        displayName: data.name,
+        photoURL: data.profileImage,
+        disabled: data.accessStatus === 'suspended',
+      });
+      
+      // Set custom claims based on role
+      await adminAuth.setCustomUserClaims(userRecord.uid, {
+        role: data.role || 'client'
+      });
+      
+      // Create client document in Firestore
+      const now = Timestamp.now();
+      const dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
+      const subscriptionExpiry = data.subscriptionExpiry ? new Date(data.subscriptionExpiry) : null;
+      const clientData = {
+        email: data.email,
+        name: data.name,
+        profileImage: data.profileImage || null,
+        dateOfBirth: dateOfBirth ? Timestamp.fromDate(dateOfBirth) : null,
+        gender: data.gender || 'other',
+        height: data.height || null,
+        weight: data.weight || null,
+        address: data.address || null,
+        telephone: data.telephone || null,
+        role: data.role || 'client',
+        memberSince: now,
+        lastActive: now,
+        accessStatus: data.accessStatus || 'active',
+        credits: data.credits || 0,
+        fidelityScore: data.fidelityScore || 0,
+        subscriptionTier: data.subscriptionTier || null,
+        subscriptionExpiry: subscriptionExpiry ? Timestamp.fromDate(subscriptionExpiry) : null,
+        observations: data.observations || null,
+        fitnessGoals: data.fitnessGoals || [],
+        onboardingCompleted: false,
+        notificationSettings: data.notificationSettings || {
+          email: true,
+          push: true,
+          sms: false
+        },
+        createdAt: now,
+        updatedAt: now
+      };
+      
+      await adminDb.collection('clients').doc(userRecord.uid).set(clientData);
+      
+      // Convert Timestamps back to ISO strings for response
+      const responseData = {
+        id: userRecord.uid,
+        ...clientData,
+        dateOfBirth: clientData.dateOfBirth?.toDate().toISOString() || null,
+        memberSince: clientData.memberSince.toDate().toISOString(),
+        lastActive: clientData.lastActive.toDate().toISOString(),
+        subscriptionExpiry: clientData.subscriptionExpiry?.toDate().toISOString() || null,
+        createdAt: clientData.createdAt.toDate().toISOString(),
+        updatedAt: clientData.updatedAt.toDate().toISOString()
+      };
+      
+      return NextResponse.json(responseData);
+    } catch (createError: any) {
+      console.error('Error creating client:', createError);
+      
+      // Handle specific Firebase Auth errors
+      if (createError.code === 'auth/email-already-exists') {
+        return NextResponse.json(
+          { error: 'Email already exists' },
+          { status: 409 }
+        );
+      } else if (createError.code === 'auth/invalid-email') {
+        return NextResponse.json(
+          { error: 'Invalid email format' },
+          { status: 400 }
+        );
+      } else if (createError.code === 'auth/operation-not-allowed') {
+        return NextResponse.json(
+          { error: 'Email/password accounts are not enabled' },
+          { status: 403 }
+        );
+      }
+      
+      return NextResponse.json(
+        { error: 'Failed to create client' },
+        { status: 500 }
+      );
+    }
   } catch (error) {
     console.error('Error creating client:', error);
     return NextResponse.json(

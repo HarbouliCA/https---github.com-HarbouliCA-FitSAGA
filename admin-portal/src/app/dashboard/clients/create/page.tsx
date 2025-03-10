@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import { PageNavigation } from '@/components/layout/PageNavigation';
 import { toast } from 'react-hot-toast';
 import { ClientFormData } from '@/types/client';
+import { ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
 export default function CreateClientPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<Partial<ClientFormData>>({
     name: '',
     email: '',
@@ -35,6 +37,7 @@ export default function CreateClientPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setError(null);
     
     try {
       const response = await fetch('/api/clients', {
@@ -53,17 +56,27 @@ export default function CreateClientPage() {
         }),
       });
       
+      const responseData = await response.json();
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create client');
+        // Handle specific error cases
+        if (response.status === 409 && responseData.error?.includes('Email already exists')) {
+          setError('This email is already in use or was recently deleted. Please try a different email address or add a unique identifier (e.g., +1) to the email.');
+        } else {
+          setError(responseData.error || 'Failed to create client');
+        }
+        throw new Error(responseData.error || 'Failed to create client');
       }
       
-      const data = await response.json();
       toast.success('Client created successfully');
-      router.push(`/dashboard/clients/${data.id}`);
+      router.push(`/dashboard/clients/${responseData.id}`);
     } catch (error) {
       console.error('Error creating client:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to create client');
+      // Error is already set above, so we don't need to set it again
+      // Only show toast for errors that aren't already displayed in the form
+      if (!error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to create client');
+      }
     } finally {
       setSaving(false);
     }
@@ -84,6 +97,11 @@ export default function CreateClientPage() {
       }
       return newData;
     });
+    
+    // Clear error when user changes the email
+    if (name === 'email') {
+      setError(null);
+    }
   };
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,6 +127,29 @@ export default function CreateClientPage() {
           label: 'Back to Clients'
         }}
       />
+      
+      {error && (
+        <div className="rounded-md bg-red-50 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <ExclamationCircleIcon className="h-5 w-5 text-red-400" aria-hidden="true" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error creating client</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{error}</p>
+                {error.includes('Email already exists') && (
+                  <p className="mt-2">
+                    <strong>Tip:</strong> If you're trying to recreate a recently deleted client, you can add a "+1" 
+                    before the @ symbol in the email (e.g., "user+1@example.com"). This creates a unique email 
+                    that will still deliver to the original address.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="bg-white shadow-sm rounded-lg">
@@ -145,9 +186,14 @@ export default function CreateClientPage() {
                   id="email"
                   value={formData.email}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  className={`mt-1 block w-full rounded-md ${error && error.includes('Email already exists') ? 'border-red-300 text-red-900 placeholder-red-300 focus:border-red-500 focus:ring-red-500' : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500'} shadow-sm sm:text-sm`}
                   required
                 />
+                {error && error.includes('Email already exists') && (
+                  <p className="mt-2 text-sm text-red-600">
+                    This email is already in use or was recently deleted.
+                  </p>
+                )}
               </div>
               
               <div>
