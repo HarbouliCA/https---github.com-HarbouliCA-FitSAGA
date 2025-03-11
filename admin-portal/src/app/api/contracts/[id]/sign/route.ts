@@ -7,11 +7,14 @@ import { db } from '@/lib/firebaseAdmin';
 // Using the correct pattern for Next.js App Router with async params
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id?: string } }
+  context: { params: { id: string } }
 ) {
   try {
+    // Use the correct pattern for accessing dynamic route parameters
+    const { params } = context;
+    
     // Validate contract ID
-    if (!params?.id) {
+    if (!params.id) {
       return NextResponse.json({ error: 'Contract ID is required' }, { status: 400 });
     }
     

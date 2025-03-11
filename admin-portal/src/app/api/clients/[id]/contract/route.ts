@@ -9,11 +9,17 @@ import path from 'path';
 // Using the correct pattern for Next.js App Router dynamic routes
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
-    // Validate client ID
+    // Use the correct pattern for accessing dynamic route parameters in Next.js App Router
+    // The issue is that Next.js expects you to access the params in a specific way
+    const { params } = context;
     const clientId = params.id;
+    
+    if (!clientId) {
+      return NextResponse.json({ error: 'Client ID is required' }, { status: 400 });
+    }
     
     // Get client data
     const client = await getClient(clientId);

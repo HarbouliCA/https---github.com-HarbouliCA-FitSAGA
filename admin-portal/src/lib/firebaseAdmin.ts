@@ -8,10 +8,10 @@ import './server-only'; // Import the server-only marker
 // https://nextjs.org/docs/app/building-your-application/rendering/composition-patterns#keeping-server-only-code-out-of-client-components
 
 // Initialize Firebase Admin
-let adminApp: App;
-let adminAuth: Auth;
-let adminFirestore: Firestore;
-let adminStorage: Storage;
+let adminApp: App | undefined;
+let adminAuth: Auth | undefined;
+let adminFirestore: Firestore | undefined;
+let adminStorage: Storage | undefined;
 
 // Function to initialize Firebase Admin if not already initialized
 function initializeFirebaseAdmin() {
@@ -32,8 +32,12 @@ function initializeFirebaseAdmin() {
     const projectId = process.env.FIREBASE_PROJECT_ID || '';
     
     // Use the project ID as the default bucket name if not specified
+    // Note: Make sure this matches exactly with your Firebase Storage bucket name
+    // The format is typically: <project-id>.appspot.com
     const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 
                          `${projectId}.appspot.com`;
+    
+    console.log(`Initializing Firebase Admin with bucket: ${storageBucket}`);
 
     try {
       adminApp = initializeApp({
@@ -46,15 +50,38 @@ function initializeFirebaseAdmin() {
       });
     } catch (error) {
       console.error('Error initializing Firebase Admin:', error);
-      throw new Error('Failed to initialize Firebase Admin SDK');
+      // Continue without throwing, we'll handle missing services gracefully
+      return {
+        adminApp: undefined,
+        adminAuth: undefined,
+        adminFirestore: undefined,
+        adminStorage: undefined
+      };
     }
   } else {
     adminApp = getApps()[0];
   }
 
-  adminAuth = getAuth(adminApp);
-  adminFirestore = getFirestore(adminApp);
-  adminStorage = getStorage(adminApp);
+  try {
+    adminAuth = getAuth(adminApp);
+  } catch (error) {
+    console.error('Error initializing Firebase Auth:', error);
+    adminAuth = undefined;
+  }
+
+  try {
+    adminFirestore = getFirestore(adminApp);
+  } catch (error) {
+    console.error('Error initializing Firestore:', error);
+    adminFirestore = undefined;
+  }
+
+  try {
+    adminStorage = getStorage(adminApp);
+  } catch (error) {
+    console.error('Error initializing Firebase Storage:', error);
+    adminStorage = undefined;
+  }
 
   return {
     adminApp,
@@ -72,13 +99,11 @@ let storage: Storage | undefined;
 
 // Use a try-catch to handle any initialization errors
 try {
-  if (typeof window === 'undefined') {
-    const admin = initializeFirebaseAdmin();
-    app = admin.adminApp;
-    auth = admin.adminAuth;
-    db = admin.adminFirestore;
-    storage = admin.adminStorage;
-  }
+  const admin = initializeFirebaseAdmin();
+  app = admin.adminApp;
+  auth = admin.adminAuth;
+  db = admin.adminFirestore;
+  storage = admin.adminStorage;
 } catch (error) {
   console.error('Error initializing Firebase Admin:', error);
 }

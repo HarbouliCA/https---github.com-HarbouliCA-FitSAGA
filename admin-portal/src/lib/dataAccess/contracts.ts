@@ -20,6 +20,11 @@ export async function createContractRecord(contractData: Omit<Contract, 'id'>) {
       ...contractData,
     };
     
+    // Check if db is defined before using it
+    if (!db) {
+      throw new Error('Firebase Firestore is not initialized');
+    }
+    
     await db.collection(CONTRACTS_COLLECTION).doc(contractId).set(contract);
     return contract.id;
   } catch (error) {
@@ -29,71 +34,98 @@ export async function createContractRecord(contractData: Omit<Contract, 'id'>) {
 }
 
 /**
- * Uploads a contract PDF to local storage and returns a URL
- * This is a fallback method when Firebase Storage is not available
+ * Uploads a contract PDF to Firebase Storage or falls back to local storage
+ * Returns a URL to the uploaded file
  */
 export async function uploadContractPdf(contractId: string, pdfBuffer: Buffer): Promise<string> {
   try {
     console.log('Attempting to upload contract PDF...');
     
-    // First try Firebase Storage
-    try {
-      const fileName = `${contractId}.pdf`;
-      const filePath = `${CONTRACTS_STORAGE_PATH}/${fileName}`;
-      
-      // Get the default bucket
-      const bucket = storage.bucket();
-      
-      if (!bucket) {
-        throw new Error('Storage bucket not configured');
-      }
-      
-      console.log(`Uploading to bucket: ${bucket.name}`);
-      
-      // Create the file in the bucket
-      const file = bucket.file(filePath);
-      
-      // Upload the file
-      await file.save(pdfBuffer, {
-        metadata: {
-          contentType: 'application/pdf'
-        }
-      });
-      
-      // Make the file publicly accessible
-      await file.makePublic();
-      
-      // Get the public URL
-      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
-      console.log(`File uploaded successfully to Firebase. Public URL: ${publicUrl}`);
-      
-      return publicUrl;
-    } catch (firebaseError) {
-      console.error('Firebase Storage upload failed, falling back to local storage:', firebaseError);
-      
-      // If Firebase Storage fails, fall back to local storage
-      // Create directory if it doesn't exist
+    // Skip Firebase Storage attempt and go straight to local storage
+    // This is a temporary solution until the Firebase Storage bucket issue is resolved
+    return uploadToLocalStorage(contractId, pdfBuffer);
+    
+    /* Commented out Firebase Storage attempt due to bucket issues
+    // First try Firebase Storage if it's available
+    if (storage) {
       try {
-        await fs.mkdir(LOCAL_STORAGE_PATH, { recursive: true });
-      } catch (mkdirError) {
-        console.error('Error creating directory:', mkdirError);
+        const fileName = `${contractId}.pdf`;
+        const filePath = `${CONTRACTS_STORAGE_PATH}/${fileName}`;
+        
+        // Try to get the default bucket
+        try {
+          const bucket = storage.bucket();
+          
+          if (!bucket) {
+            throw new Error('Storage bucket not configured');
+          }
+          
+          console.log(`Uploading to bucket: ${bucket.name}`);
+          
+          // Create the file in the bucket
+          const file = bucket.file(filePath);
+          
+          // Upload the file
+          await file.save(pdfBuffer, {
+            metadata: {
+              contentType: 'application/pdf'
+            }
+          });
+          
+          // Make the file publicly accessible
+          await file.makePublic();
+          
+          // Get the public URL
+          const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
+          console.log(`File uploaded successfully to Firebase. Public URL: ${publicUrl}`);
+          
+          return publicUrl;
+        } catch (bucketError) {
+          console.error('Error with Firebase Storage bucket:', bucketError);
+          throw new Error('Firebase Storage bucket error');
+        }
+      } catch (firebaseError) {
+        console.error('Firebase Storage upload failed, falling back to local storage:', firebaseError);
+        // Continue to local storage fallback
       }
-      
-      const fileName = `${contractId}.pdf`;
-      const filePath = path.join(LOCAL_STORAGE_PATH, fileName);
-      
-      // Write the file to local storage
-      await fs.writeFile(filePath, pdfBuffer);
-      
-      // Return a URL that points to the local file
-      const publicUrl = `/contracts/${fileName}`;
-      console.log(`File uploaded successfully to local storage. Public URL: ${publicUrl}`);
-      
-      return publicUrl;
+    } else {
+      console.log('Firebase Storage not initialized, using local storage');
     }
+    */
   } catch (error) {
     console.error('Error uploading contract PDF:', error);
-    throw new Error('Failed to upload contract PDF');
+    
+    // Last resort fallback - if everything fails, try to save to local storage
+    return uploadToLocalStorage(contractId, pdfBuffer);
+  }
+}
+
+/**
+ * Helper function to upload a PDF to local storage
+ */
+async function uploadToLocalStorage(contractId: string, pdfBuffer: Buffer): Promise<string> {
+  try {
+    // Create directory if it doesn't exist
+    try {
+      await fs.mkdir(LOCAL_STORAGE_PATH, { recursive: true });
+    } catch (mkdirError) {
+      console.error('Error creating directory:', mkdirError);
+    }
+    
+    const fileName = `${contractId}.pdf`;
+    const filePath = path.join(LOCAL_STORAGE_PATH, fileName);
+    
+    // Write the file to local storage
+    await fs.writeFile(filePath, pdfBuffer);
+    
+    // Return a URL that points to the local file
+    const publicUrl = `/contracts/${fileName}`;
+    console.log(`File uploaded successfully to local storage. Public URL: ${publicUrl}`);
+    
+    return publicUrl;
+  } catch (fallbackError) {
+    console.error('Error in local storage upload:', fallbackError);
+    throw new Error('Failed to upload contract PDF to local storage');
   }
 }
 
@@ -102,6 +134,11 @@ export async function uploadContractPdf(contractId: string, pdfBuffer: Buffer): 
  */
 export async function updateContractUrl(contractId: string, pdfUrl: string) {
   try {
+    // Check if db is defined before using it
+    if (!db) {
+      throw new Error('Firebase Firestore is not initialized');
+    }
+    
     await db.collection(CONTRACTS_COLLECTION).doc(contractId).update({
       pdfUrl
     });
@@ -116,6 +153,11 @@ export async function updateContractUrl(contractId: string, pdfUrl: string) {
  */
 export async function getContract(contractId: string): Promise<Contract | null> {
   try {
+    // Check if db is defined before using it
+    if (!db) {
+      throw new Error('Firebase Firestore is not initialized');
+    }
+    
     const contractRef = db.collection(CONTRACTS_COLLECTION).doc(contractId);
     const contractSnap = await contractRef.get();
     
@@ -135,6 +177,11 @@ export async function getContract(contractId: string): Promise<Contract | null> 
  */
 export async function updateContractStatus(contractId: string, status: Contract['status']) {
   try {
+    // Check if db is defined before using it
+    if (!db) {
+      throw new Error('Firebase Firestore is not initialized');
+    }
+    
     await db.collection(CONTRACTS_COLLECTION).doc(contractId).update({
       status
     });
@@ -149,6 +196,11 @@ export async function updateContractStatus(contractId: string, status: Contract[
  */
 export async function getLatestClientContract(clientId: string): Promise<Contract | null> {
   try {
+    // Check if db is defined before using it
+    if (!db) {
+      throw new Error('Firebase Firestore is not initialized');
+    }
+    
     const contractsRef = db.collection(CONTRACTS_COLLECTION);
     const q = contractsRef
       .where('clientId', '==', clientId)
