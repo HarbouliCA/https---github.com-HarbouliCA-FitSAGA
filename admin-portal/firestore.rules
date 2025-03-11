@@ -77,6 +77,19 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Clients collection
+    match /clients/{clientId} {
+      allow read: if isAuthenticated() && isAdmin();
+      allow write: if isAuthenticated() && isAdmin();
+    }
+
+    // Contracts collection
+    match /contracts/{contractId} {
+      allow read: if isAuthenticated() && isAdmin();
+      allow create, update: if isAuthenticated() && isAdmin();
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

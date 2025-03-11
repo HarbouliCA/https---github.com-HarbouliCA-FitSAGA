@@ -9,9 +9,12 @@ import {
   PencilSquareIcon,
   CheckCircleIcon,
   XCircleIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  EyeIcon,
+  DocumentTextIcon
 } from '@heroicons/react/24/outline';
 import { PageNavigation } from '@/components/layout/PageNavigation';
+import { DropdownMenu } from '@/components/ui/DropdownMenu';
 import { Client } from '@/types/client';
 import { toast } from 'react-hot-toast';
 
@@ -24,6 +27,7 @@ export default function ClientsPage() {
   const [hasMore, setHasMore] = useState(true);
   const [filter, setFilter] = useState<'all' | 'active' | 'suspended' | 'inactive'>('all');
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
+  const [generatingContract, setGeneratingContract] = useState<string | null>(null);
 
   const fetchClients = async (reset = false) => {
     if (reset) {
@@ -216,6 +220,40 @@ export default function ClientsPage() {
     }
   };
 
+  const handleGenerateContract = async (client: Client) => {
+    if (generatingContract === client.id) return;
+    
+    setGeneratingContract(client.id);
+    toast.loading(`Generating contract for ${client.name}...`);
+    
+    try {
+      const response = await fetch(`/api/clients/${client.id}/contract`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sendEmail: true
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to generate contract');
+      }
+      
+      const data = await response.json();
+      toast.dismiss();
+      toast.success(`Contract generated and sent to ${client.email}`);
+      
+    } catch (error) {
+      console.error('Error generating contract:', error);
+      toast.dismiss();
+      toast.error('Failed to generate contract');
+    } finally {
+      setGeneratingContract(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageNavigation 
@@ -393,34 +431,41 @@ export default function ClientsPage() {
                       {getStatusBadge(client.accessStatus)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end space-x-2">
-                        <Link
-                          href={`/dashboard/clients/${client.id}`}
-                          className="text-primary-600 hover:text-primary-900"
-                        >
-                          View
-                        </Link>
-                        <Link
-                          href={`/dashboard/clients/${client.id}/edit`}
-                          className="text-primary-600 hover:text-primary-900"
-                        >
-                          Edit
-                        </Link>
-                        {client.accessStatus === 'active' ? (
-                          <button
-                            onClick={() => handleToggleClientAccess(client, 'suspended')}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            Suspend
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleToggleClientAccess(client, 'active')}
-                            className="text-green-600 hover:text-green-900"
-                          >
-                            Activate
-                          </button>
-                        )}
+                      <div className="flex justify-end">
+                        <DropdownMenu
+                          align="right"
+                          actions={[
+                            {
+                              label: 'View',
+                              href: `/dashboard/clients/${client.id}`,
+                              icon: EyeIcon
+                            },
+                            {
+                              label: 'Edit',
+                              href: `/dashboard/clients/${client.id}/edit`,
+                              icon: PencilSquareIcon
+                            },
+                            {
+                              label: 'Contract',
+                              onClick: () => handleGenerateContract(client),
+                              icon: DocumentTextIcon,
+                              variant: 'success'
+                            },
+                            client.accessStatus === 'active' 
+                              ? {
+                                  label: 'Suspend',
+                                  onClick: () => handleToggleClientAccess(client, 'suspended'),
+                                  variant: 'danger',
+                                  icon: XCircleIcon
+                                }
+                              : {
+                                  label: 'Activate',
+                                  onClick: () => handleToggleClientAccess(client, 'active'),
+                                  variant: 'success',
+                                  icon: CheckCircleIcon
+                                },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

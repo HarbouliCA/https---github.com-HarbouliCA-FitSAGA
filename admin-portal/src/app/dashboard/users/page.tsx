@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, where, updateDoc, doc, Firestore, limit, startAfter } from 'firebase/firestore';
-import { firestore } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { User } from '@/types';
 import Link from 'next/link';
 import { 
@@ -22,7 +22,7 @@ export default function UsersPage() {
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   const fetchUsers = async (searchValue = '') => {
-    if (typeof window === 'undefined' || !firestore) return;
+    if (typeof window === 'undefined' || !db) return;
     
     setLoading(true);
     try {
@@ -30,21 +30,21 @@ export default function UsersPage() {
       
       if (searchValue) {
         usersQuery = query(
-          collection(firestore as Firestore, 'users'),
+          collection(db as Firestore, 'users'),
           orderBy('name'),
           limit(10)
         );
       } else if (filter === 'active') {
         usersQuery = lastVisible
           ? query(
-              collection(firestore as Firestore, 'users'),
+              collection(db as Firestore, 'users'),
               where('credits', '>', 0),
               orderBy('credits', 'desc'),
               startAfter(lastVisible),
               limit(10)
             )
           : query(
-              collection(firestore as Firestore, 'users'),
+              collection(db as Firestore, 'users'),
               where('credits', '>', 0),
               orderBy('credits', 'desc'),
               limit(10)
@@ -52,26 +52,26 @@ export default function UsersPage() {
       } else if (filter === 'inactive') {
         usersQuery = lastVisible
           ? query(
-              collection(firestore as Firestore, 'users'),
+              collection(db as Firestore, 'users'),
               where('credits', '==', 0),
               startAfter(lastVisible),
               limit(10)
             )
           : query(
-              collection(firestore as Firestore, 'users'),
+              collection(db as Firestore, 'users'),
               where('credits', '==', 0),
               limit(10)
             );
       } else {
         usersQuery = lastVisible
           ? query(
-              collection(firestore as Firestore, 'users'),
+              collection(db as Firestore, 'users'),
               orderBy('name'),
               startAfter(lastVisible),
               limit(10)
             )
           : query(
-              collection(firestore as Firestore, 'users'),
+              collection(db as Firestore, 'users'),
               orderBy('name'),
               limit(10)
             );
@@ -133,13 +133,13 @@ export default function UsersPage() {
   };
 
   const toggleUserAccess = async (user: User, newStatus: 'green' | 'red') => {
-    if (!firestore) {
+    if (!db) {
       console.error('Firebase services not initialized');
       return;
     }
     
     try {
-      await updateDoc(doc(firestore as Firestore, 'users', user.uid), {
+      await updateDoc(doc(db as Firestore, 'users', user.uid), {
         accessStatus: newStatus
       });
       

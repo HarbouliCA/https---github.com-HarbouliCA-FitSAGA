@@ -47,4 +47,4 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export { app, auth, firestore, storage, analytics };
+export { app, auth, firestore, firestore as db, storage, analytics };
