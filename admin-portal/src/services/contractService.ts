@@ -301,10 +301,16 @@ export async function embedSignatureInPdf(
     
     // Calculate dimensions and position
     const { width, height } = lastPage.getSize();
-    const signatureWidth = 200;
-    const signatureHeight = 100;
-    const signatureX = width / 2 - signatureWidth / 2;
-    const signatureY = height * 0.2; // Position at 20% from bottom
+    
+    // Adjust signature dimensions and position for FitSAGA_Signed_Contract.pdf
+    // The signature should be placed in the designated signature box
+    const signatureWidth = 150;
+    const signatureHeight = 75;
+    
+    // Position for the signature - adjusted for the specific template
+    // These coordinates target the signature box in the FitSAGA contract template
+    const signatureX = 150; // X position for signature box
+    const signatureY = 270; // Y position for signature box
     
     // Draw the signature
     lastPage.drawImage(signatureJpgImage, {
@@ -314,27 +320,27 @@ export async function embedSignatureInPdf(
       height: signatureHeight,
     });
     
-    // Add text for the signer's name
+    // Add text for the signer's name - positioned below the signature
     const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    lastPage.drawText(`Signed by: ${signerName}`, {
+    lastPage.drawText(`${signerName}`, {
       x: signatureX,
-      y: signatureY - 20,
-      size: 12,
+      y: signatureY - 15,
+      size: 10,
       font,
       color: rgb(0, 0, 0),
     });
     
-    // Add date
+    // Add date - positioned below the signer's name
     const currentDate = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     });
     
-    lastPage.drawText(`Date: ${currentDate}`, {
-      x: signatureX,
-      y: signatureY - 40,
-      size: 12,
+    lastPage.drawText(`${currentDate}`, {
+      x: signatureX + 200, // Position date to the right of signature
+      y: signatureY,
+      size: 10,
       font,
       color: rgb(0, 0, 0),
     });
