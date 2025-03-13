@@ -36,7 +36,7 @@ export const Modal = ({ isOpen, onClose, title, description, actions = [], child
   };
 
   return (
-    <Transition appear show={isOpen} as={Fragment}>
+    <Transition appear show={isOpen === true} as={Fragment}>
       <Dialog as="div" className="relative z-50" onClose={onClose}>
         <Transition.Child
           as={Fragment}

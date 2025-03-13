@@ -14,7 +14,7 @@ export default function DashboardLayout({
   const router = useRouter();
 
   useEffect(() => {
-    if (status === 'unauthenticated' || (status === 'authenticated' && session?.user?.role !== 'admin')) {
+    if (status === 'unauthenticated' || (status === 'authenticated' && session?.user?.role !== 'admin' && session?.user?.role !== 'instructor')) {
       router.push('/login');
     }
   }, [status, session, router]);
@@ -27,7 +27,7 @@ export default function DashboardLayout({
     );
   }
 
-  if (!session?.user || session.user.role !== 'admin') {
+  if (!session?.user || (session.user.role !== 'admin' && session.user.role !== 'instructor')) {
     return null; // Will redirect in the useEffect
   }
 

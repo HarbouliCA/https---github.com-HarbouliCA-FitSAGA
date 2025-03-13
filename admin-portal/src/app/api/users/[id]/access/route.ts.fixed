@@ -1,0 +1,90 @@
+import { NextResponse } from 'next/server';
+import { adminFirestore } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
+
+// PATCH /api/users/[id]/access
+// Update a user's access status
+export async function PATCH(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const userId = params.id;
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    const { accessStatus, reason } = await request.json();
+    
+    if (!accessStatus) {
+      return NextResponse.json(
+        { error: 'Access status is required' },
+        { status: 400 }
+      );
+    }
+    
+    // Get user data to determine role
+    const userDoc = await adminFirestore.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
+    
+    const userData = userDoc.data();
+    const role = userData?.role;
+    
+    if (!role) {
+      return NextResponse.json(
+        { error: 'User role not found' },
+        { status: 400 }
+      );
+    }
+    
+    // Update the role-specific collection
+    if (role === 'instructor') {
+      await adminFirestore.collection('instructors').doc(userId).update({
+        accessStatus,
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    } else if (role === 'client') {
+      await adminFirestore.collection('clients').doc(userId).update({
+        accessStatus,
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    } else {
+      return NextResponse.json(
+        { error: 'Invalid user role' },
+        { status: 400 }
+      );
+    }
+    
+    // Log the access status change
+    await adminFirestore.collection('access_logs').add({
+      userId,
+      role,
+      previousStatus: userData?.accessStatus || 'unknown',
+      newStatus: accessStatus,
+      reason: reason || null,
+      changedAt: FieldValue.serverTimestamp()
+    });
+    
+    return NextResponse.json({
+      success: true,
+      id: userId,
+      accessStatus
+    });
+  } catch (error: any) {
+    console.error('Error updating access status:', error);
+    return NextResponse.json(
+      { error: 'Failed to update access status', message: error.message },
+      { status: 500 }
+    );
+  }
+}

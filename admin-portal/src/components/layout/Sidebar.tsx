@@ -16,25 +16,32 @@ import {
   UserGroupIcon,
 } from '@heroicons/react/24/outline';
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-  { name: 'Clients', href: '/dashboard/clients', icon: UserGroupIcon },
-  { name: 'Users', href: '/dashboard/users', icon: UsersIcon },
-  { name: 'Activities', href: '/dashboard/activities', icon: ClipboardDocumentListIcon },
-  { name: 'Sessions', href: '/dashboard/sessions', icon: CalendarIcon },
-  { name: 'Instructors', href: '/dashboard/instructors', icon: AcademicCapIcon },
-  { name: 'Tutorials', href: '/dashboard/tutorials', icon: BookOpenIcon },
-  { name: 'Forum', href: '/dashboard/forum', icon: ChatBubbleLeftRightIcon },
-  { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
+// Define navigation items with role-based access
+const navigationItems = [
+  { name: 'Dashboard', href: '/dashboard', icon: HomeIcon, roles: ['admin', 'instructor'] },
+  { name: 'Clients', href: '/dashboard/clients', icon: UserGroupIcon, roles: ['admin'] },
+  { name: 'Users', href: '/dashboard/users', icon: UsersIcon, roles: ['admin'] },
+  { name: 'Activities', href: '/dashboard/activities', icon: ClipboardDocumentListIcon, roles: ['admin', 'instructor'] },
+  { name: 'Sessions', href: '/dashboard/sessions', icon: CalendarIcon, roles: ['admin', 'instructor'] },
+  { name: 'Instructors', href: '/dashboard/instructors', icon: AcademicCapIcon, roles: ['admin'] },
+  { name: 'Tutorials', href: '/dashboard/tutorials', icon: BookOpenIcon, roles: ['admin', 'instructor'] },
+  { name: 'Forum', href: '/dashboard/forum', icon: ChatBubbleLeftRightIcon, roles: ['admin', 'instructor'] },
+  { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon, roles: ['admin', 'instructor'] },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
+  const userRole = session?.user?.role || '';
 
   const handleSignOut = async () => {
     await signOut({ redirect: true, callbackUrl: '/login' });
   };
+
+  // Filter navigation items based on user role
+  const filteredNavigation = navigationItems.filter(item => 
+    item.roles.includes(userRole)
+  );
 
   return (
     <div className="flex flex-col w-64 bg-gray-900">
@@ -45,7 +52,7 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-1">
-        {navigation.map((item) => {
+        {filteredNavigation.map((item) => {
           const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
           return (
             <Link

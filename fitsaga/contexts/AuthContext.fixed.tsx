@@ -1,0 +1,103 @@
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import auth from '@react-native-firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { User, Client } from '../../shared/types';
+import { getUserData, subscribeToUserData, hasPermission as checkPermission } from '../services/userService';
+
+interface AuthContextType {
+  user: User | null;
+  isLoading: boolean;
+  isAuthenticated: boolean;
+  hasPermission: (permission: string) => boolean;
+}
+
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  isLoading: true,
+  isAuthenticated: false,
+  hasPermission: () => false,
+});
+
+export const useAuth = () => useContext(AuthContext);
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Check for cached user data first for faster loading
+    const loadCachedUser = async () => {
+      try {
+        const cachedUser = await AsyncStorage.getItem('user');
+        if (cachedUser) {
+          setUser(JSON.parse(cachedUser));
+        }
+      } catch (error) {
+        console.error('Error loading cached user:', error);
+      }
+    };
+    
+    loadCachedUser();
+    
+    // Subscribe to auth state changes
+    const unsubscribe = auth().onAuthStateChanged(async (firebaseUser) => {
+      try {
+        if (firebaseUser) {
+          // User is signed in
+          const userData = await getUserData(firebaseUser.uid);
+          setUser(userData);
+          
+          // Subscribe to user data changes
+          const userDataUnsubscribe = subscribeToUserData(firebaseUser.uid, (updatedUserData) => {
+            setUser(updatedUserData);
+            // Update cached user data
+            AsyncStorage.setItem('user', JSON.stringify(updatedUserData)).catch(error => {
+              console.error('Error caching user data:', error);
+            });
+          });
+          
+          // Clean up subscription on auth change
+          return () => {
+            userDataUnsubscribe();
+          };
+        } else {
+          // User is signed out
+          setUser(null);
+          await AsyncStorage.removeItem('user');
+        }
+      } catch (error) {
+        console.error('Error in auth state change:', error);
+        // Handle error gracefully
+        setUser(null);
+        await AsyncStorage.removeItem('user');
+      } finally {
+        // Always set loading to false when auth state is determined
+        setIsLoading(false);
+      }
+    });
+    
+    // Clean up subscription on unmount
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Check if user has permission
+  const hasPermission = (permission: string): boolean => {
+    return checkPermission(user, permission);
+  };
+
+  // Provide auth context
+  const value = {
+    user,
+    isLoading,
+    isAuthenticated: !!user,
+    hasPermission,
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+};

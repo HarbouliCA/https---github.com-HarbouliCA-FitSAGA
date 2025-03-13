@@ -9,20 +9,28 @@ import { PageNavigation } from '@/components/layout/PageNavigation';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 
-export default function SessionDetailPage({ params }: { params: { id: string } }) {
+// Define the params type for Next.js
+type SessionDetailParams = {
+  id: string;
+};
+
+export default function SessionDetailPage({ params }: { params: SessionDetailParams }) {
   const router = useRouter();
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Safely access params
+  const sessionId = params.id;
 
   useEffect(() => {
     const fetchSession = async () => {
-      if (!firestore || !params.id) return;
+      if (!firestore || !sessionId) return;
 
       try {
-        const sessionDoc = await getDoc(doc(firestore as Firestore, 'sessions', params.id));
+        const sessionDoc = await getDoc(doc(firestore as Firestore, 'sessions', sessionId));
         
         if (!sessionDoc.exists()) {
           setError('Session not found');
@@ -50,7 +58,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
     };
 
     fetchSession();
-  }, [params.id]);
+  }, [sessionId]);
 
   const handleDelete = async () => {
     if (!firestore || !session) return;
@@ -187,7 +195,7 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
       </div>
 
       <Modal
-        open={showDeleteModal}
+        isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
         title="Delete Session"
         description="Are you sure you want to delete this session? This action cannot be undone."

@@ -1,0 +1,275 @@
+import { NextResponse } from 'next/server';
+import { adminAuth, adminFirestore } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
+
+// GET /api/users/[id]
+// Get a specific user by ID
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const userId = params.id;
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    // Get user from Firestore
+    const userDoc = await adminFirestore.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
+    
+    const userData = userDoc.data();
+    const role = userData?.role;
+    
+    // Get role-specific data
+    let roleData = {};
+    
+    if (role === 'instructor') {
+      const instructorDoc = await adminFirestore.collection('instructors').doc(userId).get();
+      if (instructorDoc.exists) {
+        roleData = instructorDoc.data() || {};
+      }
+    } else if (role === 'client') {
+      const clientDoc = await adminFirestore.collection('clients').doc(userId).get();
+      if (clientDoc.exists) {
+        roleData = clientDoc.data() || {};
+      }
+    }
+    
+    // Get user auth data
+    const userAuth = await adminAuth.getUser(userId);
+    
+    return NextResponse.json({
+      id: userId,
+      ...userData,
+      ...roleData,
+      email: userAuth.email,
+      emailVerified: userAuth.emailVerified,
+      disabled: userAuth.disabled
+    });
+  } catch (error: any) {
+    console.error('Error getting user:', error);
+    return NextResponse.json(
+      { error: 'Failed to get user', message: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// PUT /api/users/[id]
+// Update a specific user
+export async function PUT(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const userId = params.id;
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    const updates = await request.json();
+    
+    if (!updates || Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { error: 'No updates provided' },
+        { status: 400 }
+      );
+    }
+    
+    // Get current user data
+    const userDoc = await adminFirestore.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
+    
+    const userData = userDoc.data() || {};
+    const role = userData.role;
+    
+    // Update user auth if email or password is provided
+    if (updates.email || updates.password) {
+      const authUpdates: any = {};
+      
+      if (updates.email) authUpdates.email = updates.email;
+      if (updates.password) authUpdates.password = updates.password;
+      if (updates.fullName) authUpdates.displayName = updates.fullName;
+      if (updates.phoneNumber) authUpdates.phoneNumber = updates.phoneNumber;
+      
+      await adminAuth.updateUser(userId, authUpdates);
+    }
+    
+    // Prepare user document updates
+    const userUpdates: any = {
+      updatedAt: FieldValue.serverTimestamp()
+    };
+    
+    // Add non-sensitive fields to update
+    if (updates.fullName) userUpdates.fullName = updates.fullName;
+    if (updates.phoneNumber) userUpdates.phoneNumber = updates.phoneNumber;
+    if (updates.email) userUpdates.email = updates.email;
+    
+    // Update user document
+    await adminFirestore.collection('users').doc(userId).update(userUpdates);
+    
+    // Update role-specific document
+    if (role === 'instructor') {
+      const instructorUpdates: any = {
+        updatedAt: FieldValue.serverTimestamp()
+      };
+      
+      // Add instructor-specific fields
+      if (updates.dateOfBirth) instructorUpdates.dateOfBirth = updates.dateOfBirth;
+      if (updates.telephone) instructorUpdates.telephone = updates.telephone;
+      if (updates.workingSince) instructorUpdates.workingSince = updates.workingSince;
+      if (updates.address) instructorUpdates.address = updates.address;
+      if (updates.accessStatus) instructorUpdates.accessStatus = updates.accessStatus;
+      if (updates.bankDetails) instructorUpdates.bankDetails = updates.bankDetails;
+      
+      // If instructor document doesn't exist, create it
+      const instructorDoc = await adminFirestore.collection('instructors').doc(userId).get();
+      
+      if (!instructorDoc.exists) {
+        await adminFirestore.collection('instructors').doc(userId).set({
+          ...userData,
+          ...updates,
+          role: 'instructor',
+          dateOfBirth: updates.dateOfBirth || null,
+          telephone: updates.telephone || userData.phoneNumber || null,
+          workingSince: updates.workingSince || FieldValue.serverTimestamp(),
+          address: updates.address || null,
+          accessStatus: updates.accessStatus || 'green',
+          bankDetails: updates.bankDetails || {
+            bankName: null,
+            accountHolder: null,
+            accountNumber: null,
+            iban: null
+          },
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
+        });
+      } else {
+        await adminFirestore.collection('instructors').doc(userId).update(instructorUpdates);
+      }
+    } else if (role === 'client') {
+      const clientUpdates: any = {
+        updatedAt: FieldValue.serverTimestamp()
+      };
+      
+      // Add client-specific fields
+      if (updates.dateOfBirth) clientUpdates.dateOfBirth = updates.dateOfBirth;
+      if (updates.telephone) clientUpdates.telephone = updates.telephone;
+      if (updates.address) clientUpdates.address = updates.address;
+      if (updates.accessStatus) clientUpdates.accessStatus = updates.accessStatus;
+      if (updates.credits) clientUpdates.credits = updates.credits;
+      if (updates.healthGoals) clientUpdates.healthGoals = updates.healthGoals;
+      if (updates.dietaryRestrictions) clientUpdates.dietaryRestrictions = updates.dietaryRestrictions;
+      if (updates.emergencyContact) clientUpdates.emergencyContact = updates.emergencyContact;
+      if (updates.notificationPreferences) clientUpdates.notificationPreferences = updates.notificationPreferences;
+      
+      // If client document doesn't exist, create it
+      const clientDoc = await adminFirestore.collection('clients').doc(userId).get();
+      
+      if (!clientDoc.exists) {
+        await adminFirestore.collection('clients').doc(userId).set({
+          ...userData,
+          ...updates,
+          role: 'client',
+          dateOfBirth: updates.dateOfBirth || null,
+          telephone: updates.telephone || userData.phoneNumber || null,
+          address: updates.address || null,
+          memberSince: updates.memberSince || FieldValue.serverTimestamp(),
+          accessStatus: updates.accessStatus || 'active',
+          credits: updates.credits || 0,
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp()
+        });
+      } else {
+        await adminFirestore.collection('clients').doc(userId).update(clientUpdates);
+      }
+    }
+    
+    return NextResponse.json({
+      success: true,
+      id: userId
+    });
+  } catch (error: any) {
+    console.error('Error updating user:', error);
+    return NextResponse.json(
+      { error: 'Failed to update user', message: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/users/[id]
+// Delete a specific user
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const userId = params.id;
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'User ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    // Get user data to determine role
+    const userDoc = await adminFirestore.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
+    
+    const userData = userDoc.data();
+    const role = userData?.role;
+    
+    // Delete user from Firebase Auth
+    await adminAuth.deleteUser(userId);
+    
+    // Delete user document from Firestore
+    await adminFirestore.collection('users').doc(userId).delete();
+    
+    // Delete role-specific document
+    if (role === 'instructor') {
+      await adminFirestore.collection('instructors').doc(userId).delete();
+    } else if (role === 'client') {
+      await adminFirestore.collection('clients').doc(userId).delete();
+    }
+    
+    return NextResponse.json({
+      success: true,
+      id: userId
+    });
+  } catch (error: any) {
+    console.error('Error deleting user:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete user', message: error.message },
+      { status: 500 }
+    );
+  }
+}

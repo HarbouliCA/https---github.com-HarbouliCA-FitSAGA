@@ -245,9 +245,9 @@ export default function CreateSessionPage() {
         capacity: data.capacity,
         status: 'scheduled' as const,
         enrolledCount: 0,
-        instructorId: data.instructorId,
-        instructorName: data.instructorName,
-        instructorPhotoURL: instructor.photoURL,
+        instructorId: data.instructorId || '',
+        instructorName: data.instructorName || 'Unassigned',
+        instructorPhotoURL: instructor?.photoURL || null,
         createdAt: new Date(),
         updatedAt: new Date()
       };
@@ -416,7 +416,12 @@ export default function CreateSessionPage() {
 
       // Commit all sessions at once
       await batch.commit();
-      router.push(`/dashboard/sessions/${firstSessionRef.id}`);
+      
+      // Add a small delay to ensure Firestore updates are processed
+      setTimeout(() => {
+        // Redirect to calendar view instead of session detail to see the styling immediately
+        router.push('/dashboard/sessions/calendar');
+      }, 500);
     } catch (err) {
       console.error('Error creating session(s):', err);
       setError('Failed to create session(s)');
@@ -498,7 +503,7 @@ export default function CreateSessionPage() {
                   render={({ field }) => (
                     <DatePicker
                       selected={field.value}
-                      onChange={(date) => {
+                      onChange={(date: Date | null) => {
                         field.onChange(date);
                         if (selectedActivity?.duration && date) {
                           const endTime = new Date(date.getTime());
@@ -526,7 +531,7 @@ export default function CreateSessionPage() {
                   render={({ field }) => (
                     <DatePicker
                       selected={field.value}
-                      onChange={field.onChange}
+                      onChange={(date: Date | null) => field.onChange(date)}
                       showTimeSelect
                       timeFormat="HH:mm"
                       timeIntervals={15}
@@ -629,7 +634,7 @@ export default function CreateSessionPage() {
                     render={({ field }) => (
                       <DatePicker
                         selected={field.value}
-                        onChange={field.onChange}
+                        onChange={(date: Date | null) => field.onChange(date)}
                         minDate={watch('startTime')}
                         dateFormat="MMMM d, yyyy"
                         className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm rounded-md"

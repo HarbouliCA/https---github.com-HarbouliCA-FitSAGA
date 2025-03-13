@@ -52,36 +52,96 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          // Sign in with Firebase Auth
+          // Sign in with Firebase Authentication
           const { user: firebaseUser } = await signInWithEmailAndPassword(
             auth,
             credentials.email,
             credentials.password
           );
 
-          // Get additional user data from Firestore using Admin SDK
-          const userDoc = await adminFirestore.collection('users').doc(firebaseUser.uid).get();
-          
+          console.log('Firebase Auth successful for:', firebaseUser.email);
+
+          // Get user data from Firestore
+          const userRef = adminFirestore.collection('users').doc(firebaseUser.uid);
+          const userDoc = await userRef.get();
+
           if (!userDoc.exists) {
-            throw new Error('User not found in database');
+            console.error('User document not found in Firestore for UID:', firebaseUser.uid);
+            
+            // Try to find user by email as fallback
+            const userByEmailQuery = await adminFirestore.collection('users')
+              .where('email', '==', firebaseUser.email)
+              .limit(1)
+              .get();
+            
+            if (userByEmailQuery.empty) {
+              console.error('No user found by email either:', firebaseUser.email);
+              throw new Error('User not found in database');
+            }
+            
+            const userByEmail = userByEmailQuery.docs[0];
+            console.log('Found user by email instead of UID:', userByEmail.id);
+            
+            // Update the user document with the correct UID
+            await adminFirestore.collection('users').doc(firebaseUser.uid).set({
+              ...userByEmail.data(),
+              uid: firebaseUser.uid
+            });
+            
+            // Delete the old document if it has a different ID
+            if (userByEmail.id !== firebaseUser.uid) {
+              await adminFirestore.collection('users').doc(userByEmail.id).delete();
+              console.log('Updated user document with correct UID');
+            }
+            
+            // Fetch the updated document
+            const updatedDoc = await userRef.get();
+            if (!updatedDoc.exists) {
+              throw new Error('Failed to update user document');
+            }
+            
+            const userData = updatedDoc.data();
+            console.log('Updated user data:', userData);
+            
+            // Check role and status
+            if (userData?.role !== 'admin' && userData?.role !== 'instructor') {
+              console.error(`Unauthorized role: ${userData?.role}`);
+              throw new Error('Unauthorized - Admin or instructor access required');
+            }
+            
+            if (userData?.accessStatus !== 'active' && userData?.accessStatus !== 'green') {
+              console.error(`Inactive account: ${userData?.accessStatus}`);
+              throw new Error('Account is not active');
+            }
+            
+            return {
+              id: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              name: userData.fullName || userData.name || '',
+              role: userData.role,
+              accessStatus: userData.accessStatus,
+            };
           }
 
           const userData = userDoc.data();
+          console.log('User data from Firestore:', userData);
           
-          // Check if user is an admin
-          if (userData?.role !== 'admin') {
-            throw new Error('Unauthorized - Admin access required');
+          // Check if user has appropriate role (admin or instructor)
+          if (userData?.role !== 'admin' && userData?.role !== 'instructor') {
+            console.error(`Unauthorized role: ${userData?.role}`);
+            throw new Error('Unauthorized - Admin or instructor access required');
           }
 
-          // Check if user has active status
-          if (userData?.accessStatus !== 'green') {
+          // Check if user has active status - allow both 'active' and 'green' statuses
+          if (userData?.accessStatus !== 'green' && userData?.accessStatus !== 'active') {
+            console.error(`Inactive account: ${userData?.accessStatus}`);
             throw new Error('Account is not active');
           }
 
           return {
             id: firebaseUser.uid,
             email: firebaseUser.email || '',
-            name: userData.name || '',
+            name: userData.fullName || userData.name || '',
             role: userData.role,
             accessStatus: userData.accessStatus,
           };
