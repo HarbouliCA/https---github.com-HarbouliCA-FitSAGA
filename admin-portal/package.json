@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "import-tutorials": "ts-node scripts/import-tutorials.ts",
+    "import-tutorials:dry-run": "ts-node scripts/import-tutorials.ts --dry-run",
+    "import-tutorials:plan": "ts-node scripts/import-tutorials.ts --plan-id="
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
@@ -35,7 +38,6 @@
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.16",
     "date-fns": "^4.1.0",
-    "dotenv": "^16.4.7",
     "firebase": "^9.23.0",
     "firebase-admin": "^13.2.0",
     "isomorphic-dompurify": "^2.22.0",
@@ -67,8 +69,11 @@
     "@types/react-big-calendar": "^1.16.1",
     "@types/react-datepicker": "^7.0.0",
     "@types/react-dom": "^18.2.14",
+    "csv-parser": "^3.2.0",
+    "dotenv": "^16.4.7",
     "eslint": "^8.52.0",
     "eslint-config-next": "^14.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "^5.2.2"
   }
 }

@@ -92,3 +92,9 @@ next-env.d.ts
 **/public/sw.js.map
 **/public/workbox-*.js.map
 **/public/worker-*.js.map
+
+
+/admin-portal/src/assets/videofitness/*
+/admin-portal/src/assets/videofitness/
+src/assets/videofitness/
+src/assets/videofitness/*

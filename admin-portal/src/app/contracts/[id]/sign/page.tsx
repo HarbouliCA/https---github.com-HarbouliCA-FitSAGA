@@ -6,43 +6,46 @@ import Link from 'next/link';
 import SignatureCanvas from 'react-signature-canvas';
 import { toast } from 'react-hot-toast';
 import { Contract } from '@/types/contract';
+import { use } from 'react';
+import { CheckIcon } from '@heroicons/react/24/outline';
 
 export default function ContractSigningPage({ params }: { params: { id: string } }) {
+  const id = params.id;
   const [contract, setContract] = useState<Contract | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [signing, setSigning] = useState(false);
-  const signatureRef = useRef<SignatureCanvas | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [signing, setSigning] = useState<boolean>(false);
+  const [signed, setSigned] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const signatureRef = useRef<SignatureCanvas>(null);
   const router = useRouter();
   
+
   useEffect(() => {
-    async function fetchContract() {
+    const fetchContract = async () => {
       try {
-        // Use the API endpoint instead of direct data access
-        const response = await fetch(`/api/contracts/${params.id}`);
-        if (!response.ok) throw new Error('Failed to fetch contract');
+        setLoading(true);
+        const response = await fetch(`/api/contracts/${id}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch contract');
+        }
         
         const contractData = await response.json();
-        if (!contractData) throw new Error('Contract not found');
         setContract(contractData);
       } catch (error) {
         console.error('Error fetching contract:', error);
-        toast.error('Failed to load contract');
+        setError('Failed to load contract details');
       } finally {
         setLoading(false);
       }
-    }
+    };
     
     fetchContract();
-  }, [params.id]);
-  
+  }, [id]);
+    
   const handleSign = async () => {
     if (!signatureRef.current || signatureRef.current.isEmpty()) {
-      toast.error('Please provide a signature');
-      return;
-    }
-    
-    if (!contract) {
-      toast.error('Contract not found');
+      toast.error('Please provide a signature before submitting');
       return;
     }
     
@@ -51,7 +54,7 @@ export default function ContractSigningPage({ params }: { params: { id: string }
       const signatureData = signatureRef.current.toDataURL();
       
       // Use the API endpoint for signing
-      const response = await fetch(`/api/contracts/${params.id}/sign`, {
+      const response = await fetch(`/api/contracts/${id}/sign`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -61,17 +64,33 @@ export default function ContractSigningPage({ params }: { params: { id: string }
       
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Contract signing failed with status:', response.status);
+        console.error('Error details:', errorData);
         throw new Error(errorData.error || 'Failed to sign contract');
       }
       
+      const result = await response.json();
       toast.success('Contract signed successfully!');
-      router.push('/dashboard/clients');
+      setSigned(true);
+      
+      // Optional: Redirect to a confirmation page or show the signed PDF
+      if (result.signedPdfUrl) {
+        window.open(result.signedPdfUrl, '_blank');
+      }
     } catch (error) {
-      console.error('Error signing contract:', error);
-      toast.error('Failed to sign contract');
+      console.error('Contract signing error:', error);
+      toast.error(`Failed to sign contract: ${error instanceof Error ? error.message : String(error)}`);
+      setError(error instanceof Error ? error.message : 'An unknown error occurred');
     } finally {
       setSigning(false);
     }
+  };
+
+  const handleDone = () => {
+    // Just close the window or go to a general page
+    window.close(); // This will attempt to close the window
+    // Fallback if close doesn't work
+    window.location.href = 'https://fitsaga.com'; // Or any appropriate public URL
   };
   
   const clearSignature = () => {
@@ -79,6 +98,41 @@ export default function ContractSigningPage({ params }: { params: { id: string }
       signatureRef.current.clear();
     }
   };
+  // At the end of your component, before the final return statement, add:
+  if (signed) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+          <div className="mb-6">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+              <CheckIcon className="h-10 w-10 text-green-600" />
+            </div>
+          </div>
+          
+          <h1 className="text-2xl font-bold mb-4 text-green-600">Contract Signed Successfully!</h1>
+          
+          <div className="mb-6">
+            <p className="text-gray-700 mb-4">
+              Thank you for signing the contract. A copy of the signed document has been sent to your email.
+            </p>
+            <p className="text-gray-700 mb-4 font-semibold">
+              Please check your Gmail inbox for an email from FitSAGA containing your signed contract.
+            </p>
+            <p className="text-gray-700 mb-4">
+              You can access the signed document and all other details through the FitSAGA mobile app.
+            </p>
+          </div>
+          
+          <button
+            onClick={handleDone}
+            className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
   
   if (loading) {
     return (
@@ -188,3 +242,4 @@ export default function ContractSigningPage({ params }: { params: { id: string }
     </div>
   );
 }
+

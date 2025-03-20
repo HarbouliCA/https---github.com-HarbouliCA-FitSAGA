@@ -14,10 +14,9 @@ export async function POST(
     const { params } = context;
     
     // Validate contract ID
-    if (!params.id) {
-      return NextResponse.json({ error: 'Contract ID is required' }, { status: 400 });
+    if (!params || !params.id) {
+      return NextResponse.json({ error: 'Contract ID is required' }, { status: 400 });       
     }
-    
     const contractId = params.id;
     
     // Get contract data

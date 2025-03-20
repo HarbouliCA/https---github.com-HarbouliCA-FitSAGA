@@ -269,89 +269,161 @@ export async function embedSignatureInPdf(
   signerName: string
 ): Promise<Buffer> {
   try {
-    let pdfBytes: ArrayBuffer;
+    // Import required modules from pdf-lib
+    const { PDFDocument, rgb, StandardFonts } = await import('pdf-lib');
     
-    // Handle different types of PDF sources
-    if (pdfUrl.startsWith('http')) {
-      // Remote URL - use fetch
-      const pdfResponse = await fetch(pdfUrl);
-      pdfBytes = await pdfResponse.arrayBuffer();
-    } else if (pdfUrl.startsWith('/contracts/')) {
-      // Local path in public directory
-      const filePath = path.join(process.cwd(), 'public', pdfUrl);
-      pdfBytes = await fs.readFile(filePath);
-    } else {
-      // Direct file path
-      pdfBytes = await fs.readFile(pdfUrl);
-    }
+    // Get the PDF as bytes
+    // Update the file path handling in your contractService.ts
+let pdfBytes: Uint8Array;
+if (pdfUrl.startsWith('http')) {
+  // If URL is remote, fetch it
+  const response = await fetch(pdfUrl);
+  pdfBytes = new Uint8Array(await response.arrayBuffer());
+} else {
+  // If URL is a local file path, use fs
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  
+  let resolvedPath = pdfUrl;
+  
+  // Handle different path formats
+  if (pdfUrl.startsWith('/contracts/') || pdfUrl.startsWith('contracts/')) {
+    // If it's a relative path starting with /contracts/
+    resolvedPath = path.join(process.cwd(), 'public', pdfUrl);
+  } else if (!pdfUrl.includes(':\\')) {
+    // Any other relative path
+    resolvedPath = path.join(process.cwd(), 'public', 'contracts', pdfUrl);
+  }
+  
+  console.log('Attempting to read PDF from:', resolvedPath);
+  try {
+    pdfBytes = await fs.readFile(resolvedPath);
+  } catch (e) {
+    // If the original path fails, try one more approach as fallback
+    const fallbackPath = path.join(process.cwd(), 'public', 'contracts', path.basename(pdfUrl));
+    console.log('First attempt failed, trying fallback path:', fallbackPath);
+    pdfBytes = await fs.readFile(fallbackPath);
+  }
+}
     
     // Load the PDF document
     const pdfDoc = await PDFDocument.load(pdfBytes);
     
-    // Get the last page of the document for the signature
+    // Get the last page for signature
     const pages = pdfDoc.getPages();
     const lastPage = pages[pages.length - 1];
-    
-    // Extract the image data from the data URL
-    const signatureImageData = signatureDataUrl.split(',')[1];
-    const signatureImage = Buffer.from(signatureImageData, 'base64');
-    
-    // Embed the signature image
-    const signatureJpgImage = await pdfDoc.embedPng(signatureImage);
-    
-    // Calculate dimensions and position
     const { width, height } = lastPage.getSize();
     
-    // Adjust signature dimensions and position for FitSAGA_Signed_Contract.pdf
-    // The signature should be placed in the designated signature box
-    const signatureWidth = 150;
-    const signatureHeight = 75;
+    // Extract the image data from the data URL
+    const signatureData = signatureDataUrl.split(',')[1];
+    const signatureImage = await pdfDoc.embedPng(
+      Buffer.from(signatureData, 'base64')
+    );
     
-    // Position for the signature - adjusted for the specific template
-    // These coordinates target the signature box in the FitSAGA contract template
-    const signatureX = 150; // X position for signature box
-    const signatureY = 270; // Y position for signature box
+    // Calculate the signature dimensions - maintain aspect ratio but limit size
+    const signatureMaxWidth = 200;
+    const signatureMaxHeight = 80;
+    const imgDims = signatureImage.scale(1);
+    
+    let signatureWidth = imgDims.width;
+    let signatureHeight = imgDims.height;
+    
+    if (signatureWidth > signatureMaxWidth) {
+      const scale = signatureMaxWidth / signatureWidth;
+      signatureWidth = signatureMaxWidth;
+      signatureHeight = signatureHeight * scale;
+    }
+    
+    if (signatureHeight > signatureMaxHeight) {
+      const scale = signatureMaxHeight / signatureHeight;
+      signatureHeight = signatureMaxHeight;
+      signatureWidth = signatureWidth * scale;
+    }
+    
+    // Try to find signature field
+    let signatureX = width / 2 - signatureWidth / 2; // Center horizontally by default
+    let signatureY = 150; // Default position from bottom
+    let useFormField = false;
+    
+    try {
+      const form = pdfDoc.getForm();
+      const fields = form.getFields();
+      
+      // Look for fields that might be for signatures
+      const signatureField = fields.find(field => {
+        const name = field.getName().toLowerCase();
+        return name.includes('sign') || name.includes('signature');
+      });
+      
+      if (signatureField) {
+        const fieldName = signatureField.getName();
+        console.log(`Found signature field: ${fieldName}`);
+        
+        // Get field position - this depends on field type
+        try {
+          const widget = signatureField.acroField.getWidgets()[0];
+          if (widget) {
+            const rect = widget.getRectangle();
+            signatureX = rect.x + 5; // Add a small margin
+            signatureY = rect.y + 5; // Add a small margin
+            useFormField = true;
+            
+            // Optional: Remove or flatten the form field
+            form.removeField(signatureField);
+          }
+        } catch (e) {
+          console.error('Error getting signature field position:', e);
+        }
+      }
+    } catch (e) {
+      console.log('No form fields found or error accessing form:', e);
+    }
+    
+    // If no form field was found, use a better position based on the page
+    if (!useFormField) {
+      // Position for signature - approximately 70% down the page, centered horizontally
+      signatureX = width / 2 - signatureWidth / 2;
+      signatureY = height * 0.3; // 30% from bottom of page
+    }
     
     // Draw the signature
-    lastPage.drawImage(signatureJpgImage, {
+    lastPage.drawImage(signatureImage, {
       x: signatureX,
       y: signatureY,
       width: signatureWidth,
       height: signatureHeight,
     });
     
-    // Add text for the signer's name - positioned below the signature
+    // Add signer name and date below signature
     const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    lastPage.drawText(`${signerName}`, {
+    const fontSize = 10;
+    const textY = signatureY - 20; // Position text below signature
+    
+    // Add signer name
+    lastPage.drawText(signerName, {
       x: signatureX,
-      y: signatureY - 15,
-      size: 10,
-      font,
+      y: textY,
+      size: fontSize,
+      font: font,
       color: rgb(0, 0, 0),
     });
     
-    // Add date - positioned below the signer's name
-    const currentDate = new Date().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-    
-    lastPage.drawText(`${currentDate}`, {
-      x: signatureX + 200, // Position date to the right of signature
-      y: signatureY,
-      size: 10,
-      font,
+    // Add date
+    const dateString = new Date().toLocaleDateString();
+    lastPage.drawText(`Date: ${dateString}`, {
+      x: signatureX + signatureWidth - 80, // Right-aligned
+      y: textY,
+      size: fontSize,
+      font: font,
       color: rgb(0, 0, 0),
     });
     
-    // Save the modified PDF
+    // Save the PDF
     const signedPdfBytes = await pdfDoc.save();
     
-    // Return as Buffer
     return Buffer.from(signedPdfBytes);
   } catch (error) {
     console.error('Error embedding signature in PDF:', error);
-    throw new Error('Failed to embed signature in PDF');
+    throw new Error(`Failed to embed signature: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

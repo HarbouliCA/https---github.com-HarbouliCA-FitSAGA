@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>FitSAGA RBAC Test</title>
+  <script type="module">
+    // Import Firebase SDK
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js';
+    import { getAuth, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js';
+    import { getFirestore, collection, doc, getDoc, getDocs, query, where, limit } from 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js';
+
+    // Your Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyD3MAuIYZ2dGq5hspUvxK4KeNIbVzw6EaQ",
+      authDomain: "saga-fitness.firebaseapp.com",
+      projectId: "saga-fitness",
+      storageBucket: "saga-fitness.firebasestorage.app",
+      messagingSenderId: "360667066098",
+      appId: "1:360667066098:web:93bef4a0c957968c67aa6b",
+      measurementId: "G-GCZRZ22EYL"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // DOM Elements
+    const loginForm = document.getElementById('loginForm');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const userInfoDiv = document.getElementById('userInfo');
+    const uidSpan = document.getElementById('uid');
+    const userEmailSpan = document.getElementById('userEmail');
+    const userRoleSpan = document.getElementById('userRole');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const testActionsDiv = document.getElementById('testActions');
+    const testActivitiesBtn = document.getElementById('testActivities');
+    const testSessionsBtn = document.getElementById('testSessions');
+    const testInstructorsBtn = document.getElementById('testInstructors');
+    const outputDiv = document.getElementById('output');
+
+    // Login Form Submit Handler
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = emailInput.value;
+      const password = passwordInput.value;
+      
+      try {
+        outputDiv.textContent = 'Logging in...';
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        outputDiv.textContent = 'Login successful, fetching user profile...';
+        
+        // Get user profile from Firestore
+        const userDocRef = doc(db, 'users', userCredential.user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (!userDoc.exists()) {
+          outputDiv.textContent = 'Error: User profile not found in Firestore!';
+          return;
+        }
+        
+        const userData = userDoc.data();
+        
+        // Update UI
+        uidSpan.textContent = userCredential.user.uid;
+        userEmailSpan.textContent = email;
+        userRoleSpan.textContent = userData.role || 'No role assigned';
+        
+        // Show user info and test actions
+        loginForm.style.display = 'none';
+        userInfoDiv.style.display = 'block';
+        testActionsDiv.style.display = 'block';
+        
+        outputDiv.textContent = `Successfully logged in as ${email} with role: ${userData.role || 'No role assigned'}`;
+      } catch (error) {
+        outputDiv.textContent = `Login error: ${error.message}`;
+      }
+    });
+
+    // Logout Button Handler
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        await signOut(auth);
+        
+        // Reset UI
+        loginForm.style.display = 'block';
+        userInfoDiv.style.display = 'none';
+        testActionsDiv.style.display = 'none';
+        
+        outputDiv.textContent = 'Logged out successfully';
+      } catch (error) {
+        outputDiv.textContent = `Logout error: ${error.message}`;
+      }
+    });
+
+    // Test Activities Access
+    testActivitiesBtn.addEventListener('click', async () => {
+      try {
+        outputDiv.textContent = 'Testing activities access...';
+        
+        const activitiesRef = collection(db, 'activities');
+        const activitiesQuery = query(activitiesRef, limit(5));
+        const activitiesSnapshot = await getDocs(activitiesQuery);
+        
+        let result = `Activities access: SUCCESS\n`;
+        result += `Found ${activitiesSnapshot.size} activities:\n`;
+        
+        activitiesSnapshot.forEach((doc) => {
+          const activity = doc.data();
+          result += `- ${activity.name || 'Unnamed activity'}\n`;
+        });
+        
+        outputDiv.textContent = result;
+      } catch (error) {
+        outputDiv.textContent = `Activities access error: ${error.message}`;
+      }
+    });
+
+    // Test Sessions Access
+    testSessionsBtn.addEventListener('click', async () => {
+      try {
+        outputDiv.textContent = 'Testing sessions access...';
+        
+        const sessionsRef = collection(db, 'sessions');
+        const sessionsQuery = query(sessionsRef, limit(5));
+        const sessionsSnapshot = await getDocs(sessionsQuery);
+        
+        let result = `Sessions access: SUCCESS\n`;
+        result += `Found ${sessionsSnapshot.size} sessions:\n`;
+        
+        sessionsSnapshot.forEach((doc) => {
+          const session = doc.data();
+          result += `- ${session.title || 'Unnamed session'} (Instructor: ${session.instructorId || 'None'})\n`;
+        });
+        
+        outputDiv.textContent = result;
+      } catch (error) {
+        outputDiv.textContent = `Sessions access error: ${error.message}`;
+      }
+    });
+
+    // Test Instructors Access
+    testInstructorsBtn.addEventListener('click', async () => {
+      try {
+        outputDiv.textContent = 'Testing instructors access...';
+        
+        const instructorsRef = collection(db, 'instructors');
+        const instructorsQuery = query(instructorsRef, limit(5));
+        const instructorsSnapshot = await getDocs(instructorsQuery);
+        
+        let result = `Instructors access: SUCCESS\n`;
+        result += `Found ${instructorsSnapshot.size} instructors:\n`;
+        
+        instructorsSnapshot.forEach((doc) => {
+          const instructor = doc.data();
+          result += `- ${instructor.fullName || 'Unnamed instructor'}\n`;
+        });
+        
+        outputDiv.textContent = result;
+      } catch (error) {
+        outputDiv.textContent = `Instructors access error: ${error.message}`;
+      }
+    });
+  </script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    .section {
+      margin-bottom: 20px;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    input, button {
+      margin: 5px 0;
+      padding: 8px;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #output {
+      background-color: #f8f9fa;
+      padding: 10px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      min-height: 200px;
+    }
+  </style>
+</head>
+<body>
+  <h1>FitSAGA RBAC Test</h1>
+  
+  <div class="section">
+    <h2>Login</h2>
+    <form id="loginForm">
+      <div>
+        <input id="email" type="email" placeholder="Email" required>
+      </div>
+      <div>
+        <input id="password" type="password" placeholder="Password" required>
+      </div>
+      <button type="submit">Login</button>
+    </form>
+  </div>
+  
+  <div id="userInfo" class="section" style="display:none;">
+    <h2>User Info</h2>
+    <p><strong>UID:</strong> <span id="uid"></span></p>
+    <p><strong>Email:</strong> <span id="userEmail"></span></p>
+    <p><strong>Role:</strong> <span id="userRole"></span></p>
+    <button id="logoutBtn">Logout</button>
+  </div>
+  
+  <div id="testActions" class="section" style="display:none;">
+    <h2>Test Actions</h2>
+    <p>Click the buttons below to test access to different resources:</p>
+    <button id="testActivities">Test Activities Access</button>
+    <button id="testSessions">Test Sessions Access</button>
+    <button id="testInstructors">Test Instructors Access</button>
+  </div>
+  
+  <div class="section">
+    <h2>Test Results</h2>
+    <div id="output">Login to start testing RBAC...</div>
+  </div>
+</body>
+</html>
