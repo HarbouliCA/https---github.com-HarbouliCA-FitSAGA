@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
+
+// Import the CreditCardIcon for the subscription plans menu item
 import {
   HomeIcon,
   UsersIcon,
@@ -14,6 +16,7 @@ import {
   ArrowLeftOnRectangleIcon,
   AcademicCapIcon,
   UserGroupIcon,
+  CreditCardIcon,
 } from '@heroicons/react/24/outline';
 
 // Define navigation items with role-based access
@@ -24,6 +27,7 @@ const navigationItems = [
   { name: 'Activities', href: '/dashboard/activities', icon: ClipboardDocumentListIcon, roles: ['admin', 'instructor'] },
   { name: 'Sessions', href: '/dashboard/sessions', icon: CalendarIcon, roles: ['admin', 'instructor'] },
   { name: 'Instructors', href: '/dashboard/instructors', icon: AcademicCapIcon, roles: ['admin'] },
+  { name: 'Subscription Plans', href: '/dashboard/subscription-plans', icon: CreditCardIcon, roles: ['admin'] },
   { name: 'Tutorials', href: '/dashboard/tutorials', icon: BookOpenIcon, roles: ['admin', 'instructor'] },
   { name: 'Forum', href: '/dashboard/forum', icon: ChatBubbleLeftRightIcon, roles: ['admin', 'instructor'] },
   { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon, roles: ['admin', 'instructor'] },

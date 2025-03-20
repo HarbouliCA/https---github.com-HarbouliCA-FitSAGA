@@ -1,3 +1,5 @@
+import { ClientSubscription, ClientCredits, FamilyMember } from './subscriptionPlan';
+
 export interface Client {
   // Core fields - identical across platforms
   id: string;                   // Firebase UID
@@ -20,10 +22,12 @@ export interface Client {
   accessStatus: 'active' | 'suspended' | 'inactive';
   
   // Credits & Subscription
-  credits: number;              // Available session credits
   fidelityScore: number;        // Loyalty program points
   subscriptionTier?: string;    // Current subscription level
   subscriptionExpiry?: Date;    // When subscription ends
+  subscription?: ClientSubscription;
+  credits?: ClientCredits;
+  familyMembers?: FamilyMember[];
   
   // Health & Fitness
   observations?: string;        // Health notes, restrictions 
