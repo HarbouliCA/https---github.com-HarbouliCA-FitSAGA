@@ -10,7 +10,9 @@ export async function GET(
       return NextResponse.json({ error: 'Database not initialized' }, { status: 500 });
     }
     
-    const planId = params.id;
+    // Await params before accessing its properties
+    const resolvedParams = await params;
+    const planId = resolvedParams.id;
     const planDoc = await db.collection('subscriptionPlans').doc(planId).get();
     
     if (!planDoc.exists) {
@@ -36,7 +38,9 @@ export async function PUT(
       return NextResponse.json({ error: 'Database not initialized' }, { status: 500 });
     }
     
-    const planId = params.id;
+    // Await params before accessing its properties
+    const resolvedParams = await params;
+    const planId = resolvedParams.id;
     const planData = await request.json();
     
     // Validate plan exists
@@ -74,7 +78,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'Database not initialized' }, { status: 500 });
     }
     
-    const planId = params.id;
+    // Await params before accessing its properties
+    const resolvedParams = await params;
+    const planId = resolvedParams.id;
     
     // Check if plan exists
     const planRef = db.collection('subscriptionPlans').doc(planId);

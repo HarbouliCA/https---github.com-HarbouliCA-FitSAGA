@@ -28,6 +28,7 @@ export default function ClientsPage() {
   const [filter, setFilter] = useState<'all' | 'active' | 'suspended' | 'inactive'>('all');
   const [selectedClients, setSelectedClients] = useState<string[]>([]);
   const [generatingContract, setGeneratingContract] = useState<string | null>(null);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<Record<string, any>>({});
 
   const fetchClients = async (reset = false) => {
     if (reset) {
@@ -78,6 +79,28 @@ export default function ClientsPage() {
       setLoading(false);
     }
   };
+
+  // Fetch subscription plans
+  useEffect(() => {
+    const fetchSubscriptionPlans = async () => {
+      try {
+        const response = await fetch('/api/subscription-plans');
+        if (response.ok) {
+          const data = await response.json();
+          // Create a lookup map
+          const planMap = data.reduce((acc: Record<string, any>, plan: any) => {
+            acc[plan.id] = plan;
+            return acc;
+          }, {});
+          setSubscriptionPlans(planMap);
+        }
+      } catch (error) {
+        console.error('Error fetching subscription plans:', error);
+      }
+    };
+    
+    fetchSubscriptionPlans();
+  }, []);
 
   useEffect(() => {
     fetchClients(true);
@@ -220,6 +243,42 @@ export default function ClientsPage() {
     }
   };
 
+  const getTotalCredits = (client: Client) => {
+    const planId = client.subscriptionPlan || client.subscriptionTier;
+    if (planId && subscriptionPlans[planId]) {
+      const plan = subscriptionPlans[planId];
+      const extra = (plan.name && plan.name.toLowerCase().includes('gold'))
+        ? 4
+        : (plan.intervalCredits || 0);
+      return (plan.credits || 0) + extra;
+    }
+    if (typeof client.credits === 'number') {
+      return client.credits;
+    }
+    if (client.credits && typeof client.credits === 'object') {
+      const creditsObj = client.credits as Record<string, any>;
+      return creditsObj.total || 0;
+    }
+    return 0;
+  };
+
+  const getSubscriptionPlanName = (client: Client) => {
+    // Check for subscriptionPlan first, then fall back to subscriptionTier
+    const planId = client.subscriptionPlan || client.subscriptionTier;
+    
+    if (!planId) {
+      return 'No subscription';
+    }
+    
+    const plan = subscriptionPlans[planId];
+    if (!plan) {
+      // If plan details not found, at least show the plan ID
+      return `${planId}`;
+    }
+    
+    return plan.name;
+  };
+
   const handleGenerateContract = async (client: Client) => {
     if (generatingContract === client.id) return;
     
@@ -358,6 +417,7 @@ export default function ClientsPage() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Credits</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Subscription</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
@@ -365,7 +425,7 @@ export default function ClientsPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {loading && clients.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center">
+                  <td colSpan={7} className="px-6 py-4 text-center">
                     <div className="flex justify-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
                     </div>
@@ -373,7 +433,7 @@ export default function ClientsPage() {
                 </tr>
               ) : clients.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                     No clients found
                   </td>
                 </tr>
@@ -409,12 +469,7 @@ export default function ClientsPage() {
                             </span>
                           </div>
                         )}
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{client.name}</div>
-                          <div className="text-sm text-gray-500">
-                            {client.memberSince && `Member since ${new Date(client.memberSince).toLocaleDateString()}`}
-                          </div>
-                        </div>
+                        <div className="text-sm font-medium text-gray-900">{client.name}</div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -424,49 +479,54 @@ export default function ClientsPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{client.credits} credits</div>
+                      <div className="text-sm text-gray-900">{getTotalCredits(client)} credits</div>
                       <div className="text-sm text-gray-500">{client.fidelityScore} loyalty points</div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900">{getSubscriptionPlanName(client)}</div>
+                      {client.subscriptionExpiry && (
+                        <div className="text-sm text-gray-500">
+                          Expires: {new Date(client.subscriptionExpiry).toLocaleDateString()}
+                        </div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {getStatusBadge(client.accessStatus)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex justify-end">
-                        <DropdownMenu
-                          align="right"
-                          actions={[
-                            {
-                              label: 'View',
-                              href: `/dashboard/clients/${client.id}`,
-                              icon: EyeIcon
-                            },
-                            {
-                              label: 'Edit',
-                              href: `/dashboard/clients/${client.id}/edit`,
-                              icon: PencilSquareIcon
-                            },
-                            {
-                              label: 'Contract',
-                              onClick: () => handleGenerateContract(client),
-                              icon: DocumentTextIcon,
-                              variant: 'success'
-                            },
-                            client.accessStatus === 'active' 
-                              ? {
-                                  label: 'Suspend',
-                                  onClick: () => handleToggleClientAccess(client, 'suspended'),
-                                  variant: 'danger',
-                                  icon: XCircleIcon
-                                }
-                              : {
-                                  label: 'Activate',
-                                  onClick: () => handleToggleClientAccess(client, 'active'),
-                                  variant: 'success',
-                                  icon: CheckCircleIcon
-                                },
-                          ]}
-                        />
-                      </div>
+                    <DropdownMenu
+                      align="right"
+                      actions={[
+                        {
+                          label: 'View Details',
+                          icon: EyeIcon,
+                          onClick: () => router.push(`/dashboard/clients/${client.id}`)
+                        },
+                        {
+                          label: 'Edit Client',
+                          icon: PencilSquareIcon,
+                          onClick: () => router.push(`/dashboard/clients/${client.id}/edit`)
+                        },
+                        {
+                          label: client.accessStatus === 'active' ? 'Suspend Access' : 'Activate Access',
+                          icon: client.accessStatus === 'active' ? XCircleIcon : CheckCircleIcon,
+                          onClick: () => handleToggleClientAccess(
+                            client, 
+                            client.accessStatus === 'active' ? 'suspended' : 'active'
+                          )
+                        },
+                        {
+                          label: generatingContract === client.id ? 'Generating...' : 'Generate Contract',
+                          icon: DocumentTextIcon,
+                          onClick: () => {
+                            // Only execute if not already generating
+                            if (generatingContract !== client.id) {
+                              handleGenerateContract(client);
+                            }
+                          }
+                        } 
+                      ]}
+                    />
                     </td>
                   </tr>
                 ))
@@ -475,23 +535,21 @@ export default function ClientsPage() {
           </table>
         </div>
         
-        {/* Load More */}
+        {/* Load More Button */}
         {hasMore && (
-          <div className="flex justify-center mt-4">
-            <button
+          <div className="mt-4 text-center">
+            <button 
               onClick={handleLoadMore}
               disabled={loading}
-              className="btn-secondary flex items-center"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50"
             >
               {loading ? (
                 <>
-                  <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
+                  <ArrowPathIcon className="animate-spin -ml-1 mr-2 h-4 w-4" />
                   Loading...
                 </>
               ) : (
-                <>
-                  Load More
-                </>
+                'Load More'
               )}
             </button>
           </div>

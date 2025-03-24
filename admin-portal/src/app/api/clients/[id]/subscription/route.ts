@@ -37,7 +37,42 @@ export async function POST(
     const endDate = new Date(startDateObj);
     endDate.setMonth(endDate.getMonth() + 1);
     
-    // Update client with subscription and credits
+    // Get client data to check if they already have a subscription
+    const clientData = clientDoc.data();
+    let currentCredits = 0;
+    let oldPlanCredits = 0;
+    
+    // Check if client already has credits
+    if (clientData?.credits) {
+      if (typeof clientData.credits === 'number') {
+        currentCredits = clientData.credits;
+      } else if (typeof clientData.credits === 'object') {
+        currentCredits = clientData.credits.total || 0;
+      }
+    }
+    
+    // Check if client already has a subscription
+    if (clientData?.subscription?.planId) {
+      try {
+        // Get the old plan to determine credit difference
+        const oldPlanDoc = await db.collection('subscriptionPlans').doc(clientData.subscription.planId).get();
+        if (oldPlanDoc.exists) {
+          const oldPlan = oldPlanDoc.data() as SubscriptionPlan;
+          oldPlanCredits = oldPlan.credits || 0;
+          console.log(`Old plan credits: ${oldPlanCredits}, Current credits: ${currentCredits}`);
+        }
+      } catch (error) {
+        console.error('Error fetching old subscription plan:', error);
+        // Continue with the update even if we can't get the old plan
+      }
+    }
+    
+    // Calculate new credits based on plan change: sum of base credits and interval credits
+    const newPlanCredits = (plan.credits || 0) + (plan.intervalCredits || 0);
+    const adjustedCredits = newPlanCredits;
+    console.log(`Setting credits to new plan value: ${adjustedCredits}`);
+    
+    // Update client with subscription and adjusted credits
     await clientRef.update({
       subscription: {
         planId,
@@ -46,8 +81,10 @@ export async function POST(
         status: 'active',
         autoRenew: true
       },
+      subscriptionTier: planId, // Set the subscriptionTier to the planId
+      subscriptionExpiry: endDate, // Set the subscriptionExpiry to the endDate
       credits: {
-        total: plan.credits,
+        total: adjustedCredits,
         intervalCredits: plan.intervalCredits || 0,
         lastRefilled: new Date()
       }

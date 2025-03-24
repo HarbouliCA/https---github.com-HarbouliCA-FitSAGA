@@ -3,6 +3,7 @@ import { getFirestore, collection, getDocs, doc, getDoc, setDoc, updateDoc, quer
 import { getAuth } from 'firebase/auth';
 import { initAdminSDK } from '@/lib/firebase-admin';
 import { Client, ClientFormData } from '@/types/client';
+import { ClientCredits } from '@/types/subscriptionPlan';
 import { Timestamp } from 'firebase-admin/firestore';
 
 // Initialize Firebase Admin SDK
@@ -20,6 +21,10 @@ export async function GET(request: NextRequest) {
     const minCredits = url.searchParams.get('minCredits') ? parseInt(url.searchParams.get('minCredits')!) : null;
     const searchTerm = url.searchParams.get('search') || null;
 
+    console.log('Fetching clients with params:', { 
+      pageSize, lastId, status, subscriptionTier, minCredits, searchTerm 
+    });
+
     // Reference to clients collection
     const clientsRef = adminDb.collection('clients');
     
@@ -35,58 +40,154 @@ export async function GET(request: NextRequest) {
       clientsQuery = clientsQuery.where('subscriptionTier', '==', subscriptionTier);
     }
     
-    if (minCredits !== null) {
-      clientsQuery = clientsQuery.where('credits', '>=', minCredits);
-    }
+    // Remove the minCredits filter as it can cause issues with different credits formats
+    // We'll filter by credits client-side after fetching the data
+    console.log('Skipping minCredits filter in Firestore query to avoid issues with different credits formats');
     
     // Apply pagination
     if (lastId) {
-      const lastDocRef = adminDb.collection('clients').doc(lastId);
-      const lastDoc = await lastDocRef.get();
-      if (lastDoc.exists) {
-        clientsQuery = clientsQuery.startAfter(lastDoc);
+      try {
+        const lastDocRef = adminDb.collection('clients').doc(lastId);
+        const lastDoc = await lastDocRef.get();
+        if (lastDoc.exists) {
+          clientsQuery = clientsQuery.startAfter(lastDoc);
+        } else {
+          console.warn(`Last document with ID ${lastId} does not exist, ignoring pagination`);
+        }
+      } catch (paginationError) {
+        console.error('Error applying pagination:', paginationError);
+        // Continue without pagination if there's an error
       }
     }
     
     clientsQuery = clientsQuery.limit(pageSize);
     
     // Execute query
+    console.log('Executing Firestore query...');
     const snapshot = await clientsQuery.get();
+    console.log(`Query returned ${snapshot.size} documents`);
     
     // Process results
     const clients: Client[] = [];
     snapshot.forEach(doc => {
-      const data = doc.data();
-      clients.push({
-        id: doc.id,
-        email: data.email || '',
-        name: data.name || '',
-        profileImage: data.profileImage || null,
-        dateOfBirth: data.dateOfBirth?.toDate() || new Date(),
-        gender: data.gender || 'other',
-        height: data.height || null,
-        weight: data.weight || null,
-        address: data.address || null,
-        telephone: data.telephone || null,
-        role: data.role || 'client',
-        memberSince: data.memberSince?.toDate() || new Date(),
-        lastActive: data.lastActive?.toDate() || new Date(),
-        accessStatus: data.accessStatus || 'active',
-        credits: data.credits || 0,
-        fidelityScore: data.fidelityScore || 0,
-        subscriptionTier: data.subscriptionTier || null,
-        subscriptionExpiry: data.subscriptionExpiry?.toDate() || null,
-        observations: data.observations || null,
-        fitnessGoals: data.fitnessGoals || [],
-        onboardingCompleted: data.onboardingCompleted || false,
-        notificationSettings: data.notificationSettings || {
-          email: true,
-          push: true,
-          sms: false
-        },
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date()
-      });
+      try {
+        const data = doc.data();
+        
+        // Extract credits correctly, handling both number and object formats
+        let clientCredits: ClientCredits;
+        if (typeof data.credits === 'number') {
+          clientCredits = {
+            total: data.credits,
+            intervalCredits: 0,
+            lastRefilled: new Date()
+          };
+        } else if (data.credits && typeof data.credits === 'object') {
+          // Try to extract from credits object if it exists
+          const totalCredits = data.credits.total || 
+                              data.credits.value || 
+                              data.credits.amount || 
+                              data.credits.balance || 0;
+          
+          clientCredits = {
+            total: totalCredits,
+            intervalCredits: data.credits.intervalCredits || 0,
+            lastRefilled: data.credits.lastRefilled ? 
+              (data.credits.lastRefilled.toDate ? data.credits.lastRefilled.toDate() : new Date(data.credits.lastRefilled)) 
+              : new Date()
+          };
+        } else {
+          // Default if no credits information is available
+          clientCredits = {
+            total: 0,
+            intervalCredits: 0,
+            lastRefilled: new Date()
+          };
+        }
+        
+        // Helper function to safely convert various date formats to Date objects
+        // Returns Date | null for most date fields
+        const safelyConvertToDate = (dateValue: any): Date | null => {
+          try {
+            if (!dateValue) return null;
+            
+            // If it's already a Date object
+            if (dateValue instanceof Date) return dateValue;
+            
+            // If it's a Firestore Timestamp with toDate method
+            if (dateValue.toDate && typeof dateValue.toDate === 'function') {
+              return dateValue.toDate();
+            }
+            
+            // If it's a string, parse it
+            if (typeof dateValue === 'string') {
+              return new Date(dateValue);
+            }
+            
+            // If it's a number (timestamp in seconds or milliseconds)
+            if (typeof dateValue === 'number') {
+              // If it's in seconds (Firestore timestamp seconds)
+              if (dateValue < 2000000000) {
+                return new Date(dateValue * 1000);
+              }
+              // If it's in milliseconds
+              return new Date(dateValue);
+            }
+            
+            return null;
+          } catch (error) {
+            console.error('Error converting date:', error, dateValue);
+            return null;
+          }
+        };
+        
+        // Helper function that always returns a Date (never null)
+        // Use this for required Date fields like dateOfBirth
+        const convertToRequiredDate = (dateValue: any): Date => {
+          const result = safelyConvertToDate(dateValue);
+          return result || new Date(); // Always return a Date, never null
+        };
+        
+        // Helper function that returns Date | undefined (never null)
+        // Use this for optional Date fields like subscriptionExpiry
+        const convertToOptionalDate = (dateValue: any): Date | undefined => {
+          const result = safelyConvertToDate(dateValue);
+          return result || undefined; // Convert null to undefined
+        };
+        
+        clients.push({
+          id: doc.id,
+          email: data.email || '',
+          name: data.name || '',
+          profileImage: data.profileImage || null,
+          dateOfBirth: convertToRequiredDate(data.dateOfBirth), // Always returns a Date
+          gender: data.gender || 'other',
+          height: data.height || null,
+          weight: data.weight || null,
+          address: data.address || null,
+          telephone: data.telephone || null,
+          role: data.role || 'client',
+          memberSince: convertToRequiredDate(data.memberSince), // Always returns a Date
+          lastActive: convertToRequiredDate(data.lastActive), // Always returns a Date
+          accessStatus: data.accessStatus || 'active',
+          credits: clientCredits,
+          fidelityScore: data.fidelityScore || 0,
+          subscriptionTier: data.subscriptionTier || null,
+          subscriptionExpiry: convertToOptionalDate(data.subscriptionExpiry), // Returns Date | undefined
+          observations: data.observations || null,
+          fitnessGoals: data.fitnessGoals || [],
+          onboardingCompleted: data.onboardingCompleted || false,
+          notificationSettings: data.notificationSettings || {
+            email: true,
+            push: true,
+            sms: false
+          },
+          createdAt: convertToRequiredDate(data.createdAt), // Always returns a Date
+          updatedAt: convertToRequiredDate(data.updatedAt) // Always returns a Date
+        });
+      } catch (docError) {
+        console.error(`Error processing client document ${doc.id}:`, docError);
+        // Continue with other documents
+      }
     });
     
     // If search term is provided, filter results client-side
@@ -98,6 +199,14 @@ export async function GET(request: NextRequest) {
         client.email.toLowerCase().includes(term) ||
         client.telephone?.toLowerCase().includes(term) ||
         client.address?.toLowerCase().includes(term)
+      );
+    }
+    
+    // If minCredits was provided, filter by credits client-side
+    if (minCredits !== null) {
+      console.log(`Filtering clients by minCredits: ${minCredits} client-side`);
+      filteredClients = filteredClients.filter(client => 
+        (client.credits?.total || 0) >= minCredits
       );
     }
     
@@ -180,7 +289,9 @@ export async function POST(request: NextRequest) {
       const now = Timestamp.now();
       const dateOfBirth = data.dateOfBirth ? new Date(data.dateOfBirth) : null;
       const subscriptionExpiry = data.subscriptionExpiry ? new Date(data.subscriptionExpiry) : null;
-      const clientData = {
+      
+      // Prepare client data
+      let clientData: any = {
         email: data.email,
         name: data.name,
         profileImage: data.profileImage || null,
@@ -194,9 +305,9 @@ export async function POST(request: NextRequest) {
         memberSince: now,
         lastActive: now,
         accessStatus: data.accessStatus || 'active',
-        credits: data.credits || 0,
         fidelityScore: data.fidelityScore || 0,
-        subscriptionTier: data.subscriptionTier || null,
+        subscriptionTier: data.subscriptionTier || data.subscriptionPlan || null,
+        subscriptionPlan: data.subscriptionPlan || null,
         subscriptionExpiry: subscriptionExpiry ? Timestamp.fromDate(subscriptionExpiry) : null,
         observations: data.observations || null,
         fitnessGoals: data.fitnessGoals || [],
@@ -209,6 +320,41 @@ export async function POST(request: NextRequest) {
         createdAt: now,
         updatedAt: now
       };
+      
+      // If a subscription plan is provided, fetch the plan details and set credits
+      if (data.subscriptionPlan) {
+        try {
+          const planDoc = await adminDb.collection('subscriptionPlans').doc(data.subscriptionPlan).get();
+          
+          if (planDoc.exists) {
+            const plan = planDoc.data() as { 
+              credits?: number; 
+              intervalCredits?: number;
+              name?: string;
+            };
+            
+            // Set credits based on the plan's credits
+            clientData.credits = {
+              total: plan?.credits || 0,
+              intervalCredits: plan?.intervalCredits || 0,
+              lastRefilled: now
+            };
+            
+            console.log(`Setting credits from plan: ${plan?.credits || 0} credits, ${plan?.intervalCredits || 0} interval credits`);
+          } else {
+            // If plan doesn't exist, use provided credits or default to 0
+            clientData.credits = data.credits || 0;
+            console.log('Subscription plan not found, using default credits');
+          }
+        } catch (planError) {
+          console.error('Error fetching subscription plan:', planError);
+          // If there's an error fetching the plan, use provided credits or default to 0
+          clientData.credits = data.credits || 0;
+        }
+      } else {
+        // If no subscription plan, use provided credits or default to 0
+        clientData.credits = data.credits || 0;
+      }
       
       await adminDb.collection('clients').doc(userRecord.uid).set(clientData);
       

@@ -1,17 +1,22 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageNavigation } from '@/components/layout/PageNavigation';
 import { toast } from 'react-hot-toast';
 import { ClientFormData } from '@/types/client';
 import { ExclamationCircleIcon } from '@heroicons/react/24/outline';
+import { SubscriptionPlan } from '@/types/subscriptionPlan'; // Add this import
+import { useState, useEffect } from 'react'; // Add useEffect
 
 export default function CreateClientPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Partial<ClientFormData>>({
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
+  const [formData, setFormData] = useState<Partial<ClientFormData & {
+    subscriptionPlan: string;
+    additionalCredits: number;
+  }>>({
     name: '',
     email: '',
     telephone: '',
@@ -21,9 +26,11 @@ export default function CreateClientPage() {
     height: undefined,
     weight: undefined,
     role: 'client',
-    subscriptionTier: '',
+    subscriptionTier: '', // Keep for backward compatibility
+    subscriptionPlan: '', // Add the new field
     subscriptionExpiry: '',
     credits: 0,
+    additionalCredits: 0, // Add the new field
     fidelityScore: 0,
     observations: '',
     fitnessGoals: [],
@@ -33,6 +40,40 @@ export default function CreateClientPage() {
       sms: false
     }
   });
+
+  useEffect(() => {
+    async function fetchPlans() {
+      try {
+        const response = await fetch('/api/subscription-plans');
+        if (response.ok) {
+          const data = await response.json();
+          setSubscriptionPlans(data);
+        } else {
+          toast.error('Failed to fetch subscription plans');
+        }
+      } catch (error) {
+        console.error('Failed to fetch subscription plans', error);
+        toast.error('Failed to load subscription plans');
+      }
+    }
+    
+    fetchPlans();
+  }, []);
+
+  // useEffect to update credits when a subscription plan is selected.
+  // Now checks if intervalCredits is undefined or null, defaulting to 4 for gold plans.
+  useEffect(() => {
+    if (formData.subscriptionPlan) {
+      const selectedPlan = subscriptionPlans.find(plan => plan.id === formData.subscriptionPlan);
+      if (selectedPlan) {
+        const intervalCredits = (selectedPlan.intervalCredits === undefined || selectedPlan.intervalCredits === null)
+          ? (selectedPlan.name.toLowerCase().includes('gold') ? 4 : 0)
+          : selectedPlan.intervalCredits;
+        const computedCredits = (selectedPlan.credits || 0) + intervalCredits;
+        setFormData(prev => ({ ...prev, credits: computedCredits }));
+      }
+    }
+  }, [formData.subscriptionPlan, subscriptionPlans]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +92,7 @@ export default function CreateClientPage() {
           height: formData.height ? Number(formData.height) : null,
           weight: formData.weight ? Number(formData.weight) : null,
           credits: Number(formData.credits) || 0,
+          additionalCredits: Number(formData.additionalCredits) || 0,
           fidelityScore: Number(formData.fidelityScore) || 0,
           fitnessGoals: formData.fitnessGoals || []
         }),
@@ -72,8 +114,6 @@ export default function CreateClientPage() {
       router.push(`/dashboard/clients/${responseData.id}`);
     } catch (error) {
       console.error('Error creating client:', error);
-      // Error is already set above, so we don't need to set it again
-      // Only show toast for errors that aren't already displayed in the form
       if (!error) {
         toast.error(error instanceof Error ? error.message : 'Failed to create client');
       }
@@ -98,7 +138,6 @@ export default function CreateClientPage() {
       return newData;
     });
     
-    // Clear error when user changes the email
     if (name === 'email') {
       setError(null);
     }
@@ -294,20 +333,28 @@ export default function CreateClientPage() {
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label htmlFor="subscriptionTier" className="block text-sm font-medium text-gray-700">
-                  Subscription Tier
+                <label htmlFor="subscriptionPlan" className="block text-sm font-medium text-gray-700">
+                  Subscription Plan
                 </label>
                 <select
-                  name="subscriptionTier"
-                  id="subscriptionTier"
-                  value={formData.subscriptionTier}
+                  name="subscriptionPlan"
+                  id="subscriptionPlan"
+                  value={formData.subscriptionPlan || ''}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 >
                   <option value="">No Subscription</option>
-                  <option value="basic">Basic</option>
-                  <option value="premium">Premium</option>
-                  <option value="elite">Elite</option>
+                  {subscriptionPlans.map((plan: SubscriptionPlan) => {
+                    const intervalCredits = (plan.intervalCredits === undefined || plan.intervalCredits === null)
+                      ? (plan.name.toLowerCase().includes('gold') ? 4 : 0)
+                      : plan.intervalCredits;
+                    const computedCredits = (plan.credits || 0) + intervalCredits;
+                    return (
+                      <option key={plan.id} value={plan.id}>
+                        {plan.name} - {plan.price}{plan.currency || '€'} ({computedCredits} credits)
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
               
@@ -327,16 +374,17 @@ export default function CreateClientPage() {
               
               <div>
                 <label htmlFor="credits" className="block text-sm font-medium text-gray-700">
-                  Initial Credits
+                  Additional Credits
                 </label>
                 <input
                   type="number"
-                  name="credits"
-                  id="credits"
-                  value={formData.credits}
+                  name="additionalCredits"
+                  id="additionalCredits"
+                  value={formData.additionalCredits || 0}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 />
+                <p className="mt-1 text-xs text-gray-500">Credits in addition to plan credits</p>
               </div>
             </div>
           </div>

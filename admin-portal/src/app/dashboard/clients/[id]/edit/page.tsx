@@ -1,22 +1,28 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react'; // Remove 'use' import
 import { useRouter } from 'next/navigation';
 import { PageNavigation } from '@/components/layout/PageNavigation';
 import { Client } from '@/types/client';
 import { toast } from 'react-hot-toast';
 
 export default function EditClientPage({ params }: { params: { id: string } }) {
+  // Don't try to unwrap params - just use the id directly
+  const id = params.id;
+  
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [client, setClient] = useState<Client | null>(null);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<any[]>([]);
+  
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     telephone: '',
     address: '',
     subscriptionTier: '',
+    subscriptionPlan: '',
     subscriptionExpiry: '',
     healthGoals: '',
     notificationPreferences: {
@@ -35,7 +41,8 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
   useEffect(() => {
     const fetchClient = async () => {
       try {
-        const response = await fetch(`/api/clients/${params.id}`);
+        // Use unwrapped id instead of params.id
+        const response = await fetch(`/api/clients/${id}`);
         
         if (!response.ok) {
           if (response.status === 404) {
@@ -54,6 +61,7 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
           telephone: data.telephone || '',
           address: data.address || '',
           subscriptionTier: data.subscriptionTier || '',
+          subscriptionPlan: data.subscriptionPlan || data.subscriptionTier || '',
           subscriptionExpiry: data.subscriptionExpiry || '',
           healthGoals: data.healthGoals || '',
           notificationPreferences: {
@@ -77,7 +85,25 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
     };
 
     fetchClient();
-  }, [params.id, router]);
+  }, [id, router]); // Use id instead of params.id
+  
+  // Fetch subscription plans
+  useEffect(() => {
+    const fetchSubscriptionPlans = async () => {
+      try {
+        const response = await fetch('/api/subscription-plans');
+        if (response.ok) {
+          const data = await response.json();
+          setSubscriptionPlans(data);
+          console.log('Fetched subscription plans:', data);
+        }
+      } catch (error) {
+        console.error('Error fetching subscription plans:', error);
+      }
+    };
+    
+    fetchSubscriptionPlans();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +148,12 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
         };
       } else {
         (newData as any)[name] = value;
+        
+        // If subscriptionTier is being changed, also update subscriptionPlan
+        if (name === 'subscriptionTier') {
+          (newData as any)['subscriptionPlan'] = value;
+          console.log(`Updating both subscriptionTier and subscriptionPlan to: ${value}`);
+        }
       }
       return newData;
     });
@@ -258,10 +290,15 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 >
                   <option value="">No Subscription</option>
-                  <option value="basic">Basic</option>
-                  <option value="premium">Premium</option>
-                  <option value="elite">Elite</option>
+                  {subscriptionPlans.map(plan => (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.name}
+                    </option>
+                  ))}
                 </select>
+                {loading && subscriptionPlans.length === 0 && (
+                  <p className="mt-1 text-sm text-gray-500">Loading subscription plans...</p>
+                )}
               </div>
               
               <div>

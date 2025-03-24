@@ -32,14 +32,47 @@ export async function PATCH(
     }
     
     const clientData = clientDoc.data();
-    const currentCredits = clientData?.credits || 0;
-    const newCredits = Math.max(0, currentCredits + amount); // Ensure credits don't go below 0
+    console.log('Raw client data from Firestore:', clientData);
+    
+    // Handle both number and object formats of credits
+    let currentCredits = 0;
+    let newCredits = 0;
+    let creditsUpdate = {};
+    
+    if (typeof clientData?.credits === 'number') {
+      // If credits is a number, simply add the amount
+      currentCredits = clientData.credits;
+      newCredits = Math.max(0, currentCredits + amount); // Ensure credits don't go below 0
+      creditsUpdate = { credits: newCredits };
+    } else if (clientData?.credits && typeof clientData.credits === 'object') {
+      // If credits is an object, update the total property
+      const creditsObj = clientData.credits;
+      currentCredits = creditsObj.total || 0;
+      newCredits = Math.max(0, currentCredits + amount); // Ensure credits don't go below 0
+      
+      // Create a new credits object with updated total
+      creditsUpdate = { 
+        credits: {
+          ...creditsObj,
+          total: newCredits,
+          lastUpdated: new Date()
+        }
+      };
+    } else {
+      // If credits doesn't exist or is null, create a new credits value
+      currentCredits = 0;
+      newCredits = Math.max(0, amount); // Ensure credits don't go below 0
+      creditsUpdate = { credits: newCredits };
+    }
     
     // Update client credits
     await clientRef.update({
-      credits: newCredits,
+      ...creditsUpdate,
       updatedAt: new Date()
     });
+    
+    // Log the update for debugging
+    console.log('Credits update:', creditsUpdate);
     
     // Record credit transaction
     await adminDb.collection('creditTransactions').add({

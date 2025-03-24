@@ -28,6 +28,18 @@ type BookingInfo = {
   sessionDate: Date;
 };
 
+interface SubscriptionPlan {
+  id: string;
+  name: string;
+  credits: number;
+  price: number;
+  currency: string;
+  features: string[];
+  type: string;
+  unlimited: boolean;
+  intervalCredits: number;
+}
+
 export default function ClientDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [client, setClient] = useState<Client | null>(null);
@@ -39,6 +51,8 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
   const [creditReason, setCreditReason] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [isAdjustingCredits, setIsAdjustingCredits] = useState(false);
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState(false);
   
   // Store clientId in state to avoid direct params access in useEffect
   const [clientId, setClientId] = useState<string>('');
@@ -75,6 +89,39 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       setLoading(false);
     }
   };
+
+  // Fetch subscription plan details when client data changes
+  useEffect(() => {
+    const fetchSubscriptionPlan = async (planId: string) => {
+      if (!planId) return;
+      
+      setLoadingPlan(true);
+      try {
+        const response = await fetch(`/api/subscription-plans/${planId}`);
+        
+        if (!response.ok) {
+          console.error('Failed to fetch subscription plan:', response.statusText);
+          return;
+        }
+        
+        const data = await response.json();
+        console.log('Fetched subscription plan:', data);
+        setSubscriptionPlan(data);
+      } catch (error) {
+        console.error('Error fetching subscription plan:', error);
+      } finally {
+        setLoadingPlan(false);
+      }
+    };
+    
+    if (client) {
+      // Try to fetch plan using subscriptionTier or subscriptionPlan
+      const planId = client.subscriptionTier || client.subscriptionPlan;
+      if (planId) {
+        fetchSubscriptionPlan(planId);
+      }
+    }
+  }, [client]);
 
   useEffect(() => {
     if (clientId) {
@@ -168,6 +215,84 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
       setIsAdjustingCredits(false);
     }
   };
+
+  // Add right after handleAdjustCredits function (around line 166)
+  const displayCredits = () => {
+    if (!client) return 0;
+    
+    // Log the client object to inspect its structure
+    console.log("Client object:", client);
+    
+    let baseCredits = 0;
+    if (typeof client.credits === 'number') {
+      baseCredits = client.credits;
+    } else if (client.credits && typeof client.credits === 'object') {
+      // Log the object to console to inspect its structure
+      console.log("Client credits object:", client.credits);
+      
+      // Use a safer approach with type assertion
+      // TypeScript doesn't know what properties exist, but we'll check at runtime
+      const creditsObj = client.credits as Record<string, any>;
+      
+      // Try common property names
+      baseCredits = creditsObj.value || 
+                   creditsObj.amount || 
+                   creditsObj.total || 
+                   creditsObj.balance || 0;
+    }
+    
+    return baseCredits;
+  };
+
+  const displaySubscription = () => {
+    if (!client) return 'No active subscription';
+    
+    // Log subscription-related fields for debugging
+    console.log("Subscription fields:", {
+      subscriptionPlan: client.subscriptionPlan,
+      subscriptionTier: client.subscriptionTier,
+      subscriptionExpiry: client.subscriptionExpiry,
+      fetchedPlan: subscriptionPlan
+    });
+    
+    // If we have fetched the subscription plan details, use the plan name
+    if (subscriptionPlan) {
+      const expiry = client.subscriptionExpiry 
+        ? ` (Expires: ${format(new Date(client.subscriptionExpiry), 'MMM d, yyyy')})`
+        : '';
+      return `${subscriptionPlan.name}${expiry}`;
+    }
+    
+    // If we're still loading the plan, show a loading indicator
+    if (loadingPlan) {
+      return 'Loading subscription details...';
+    }
+    
+    // First check subscriptionTier (most reliable)
+    if (client.subscriptionTier) {
+      const expiry = client.subscriptionExpiry 
+        ? ` (Expires: ${format(new Date(client.subscriptionExpiry), 'MMM d, yyyy')})`
+        : '';
+      return `${client.subscriptionTier}${expiry}`;
+    }
+    
+    // Then check subscriptionPlan
+    if (client.subscriptionPlan) {
+      // subscriptionPlan is a string, just use it as the plan name
+      const planName = typeof client.subscriptionPlan === 'string' 
+        ? client.subscriptionPlan 
+        : 'Active subscription';
+      
+      // Use subscriptionExpiry for expiry date
+      if (client.subscriptionExpiry) {
+        return `${planName} (Expires: ${format(new Date(client.subscriptionExpiry), 'MMM d, yyyy')})`;
+      }
+      return planName;
+    }
+    
+    return 'No active subscription';
+  };
+  
 
   if (loading) {
     return (
@@ -273,7 +398,7 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                 <div>
                   <dt className="text-sm font-medium text-gray-500">Credits</dt>
                   <dd className="mt-1 flex items-center justify-between">
-                    <span className="text-2xl font-bold text-gray-900">{client.credits}</span>
+                    <span className="text-2xl font-bold text-gray-900">{displayCredits()}</span>
                     <button
                       onClick={() => setShowCreditModal(true)}
                       className="btn-sm btn-secondary"
@@ -287,22 +412,11 @@ export default function ClientDetailPage({ params }: { params: { id: string } })
                   <dd className="mt-1 text-lg font-semibold text-gray-900">{client.fidelityScore}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-500">Subscription</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    {client.subscriptionTier ? (
-                      <div>
-                        <span className="font-medium">{client.subscriptionTier}</span>
-                        {client.subscriptionExpiry && (
-                          <span className="text-gray-500">
-                            {' '}(Expires: {format(new Date(client.subscriptionExpiry), 'MMM d, yyyy')})
-                          </span>
-                        )}
-                      </div>
-                    ) : (
-                      'No active subscription'
-                    )}
-                  </dd>
-                </div>
+  <dt className="text-sm font-medium text-gray-500">Subscription</dt>
+  <dd className="mt-1 text-sm text-gray-900">
+    {displaySubscription()}
+  </dd>
+</div>
               </dl>
             </div>
           </div>

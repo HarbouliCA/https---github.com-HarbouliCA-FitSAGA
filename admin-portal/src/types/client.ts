@@ -28,7 +28,8 @@ export interface Client {
   subscription?: ClientSubscription;
   credits?: ClientCredits;
   familyMembers?: FamilyMember[];
-  
+  subscriptionPlan?: string; // The plan ID
+  additionalCredits?: number;  
   // Health & Fitness
   observations?: string;        // Health notes, restrictions 
   fitnessGoals?: string[];      // Selected fitness goals
@@ -51,6 +52,8 @@ export interface ClientFormData {
   email: string;
   name: string;
   profileImage?: string;
+  subscriptionPlan?: string;
+  additionalCredits?: number;
   
   // Personal information
   dateOfBirth: string; 
