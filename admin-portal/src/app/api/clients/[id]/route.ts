@@ -202,7 +202,9 @@ export async function GET(
         sms: false
       },
       createdAt: safelyConvertToDate(clientData.createdAt),
-      updatedAt: safelyConvertToDate(clientData.updatedAt)
+      updatedAt: safelyConvertToDate(clientData.updatedAt),
+      healthGoals: clientData.healthGoals || [],
+      dietaryRestrictions: clientData.dietaryRestrictions || 'N/A',
     };
     
     // Log the mapped client data for debugging

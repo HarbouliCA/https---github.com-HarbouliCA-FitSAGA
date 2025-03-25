@@ -14,14 +14,15 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
-    "baseUrl": ".",
+    "baseUrl": "src",
     "plugins": [
       {
         "name": "next"
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["*"],
+      "@/interfaces/*": ["interfaces/*"],
     },
     "typeRoots": [
       "./node_modules/@types", 
