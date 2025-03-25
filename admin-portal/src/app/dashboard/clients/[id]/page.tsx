@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import CreditsAdjustmentModal from "@/components/clients/CreditsAdjustmentModal";
+import { Button } from "@/components/ui/Button";
 
 interface EmergencyContact {
   name?: string;
@@ -28,6 +29,7 @@ interface Client {
   address?: string;
   createdAt?: string;
   credits?: number; // if available from client record
+  gymCredits: number | "unlimited";
   dateOfBirth?: string;
   dietaryRestrictions?: string;
   email?: string;
@@ -64,17 +66,19 @@ interface SubscriptionPlan {
 
 export default function ClientDetailPage() {
   const { id } = useParams() as { id: string };
+  const router = useRouter();
   const [client, setClient] = useState<Client | null>(null);
   const [planData, setPlanData] = useState<SubscriptionPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [planLoading, setPlanLoading] = useState(true);
   const [isCreditsModalOpen, setIsCreditsModalOpen] = useState(false);
-  const [refreshData, setRefreshData] = useState(0);
+
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   useEffect(() => {
     async function fetchClient() {
       try {
-        const response = await fetch(`/api/clients/${id}`);
+        const response = await fetch(`/api/clients/${id}?t=${Date.now()}`, { cache: "no-store" });
         const data: Client = await response.json();
         setClient(data);
       } catch (error) {
@@ -86,15 +90,13 @@ export default function ClientDetailPage() {
     if (id) {
       fetchClient();
     }
-  }, [id, refreshData]);
+  }, [id, refreshTrigger]);
 
   useEffect(() => {
     async function fetchSubscriptionPlan() {
       if (client) {
         try {
-          const response = await fetch(
-            `/api/subscription-plans/${client.subscriptionPlan}`
-          );
+          const response = await fetch(`/api/subscription-plans/${client.subscriptionPlan}`);
           const data: SubscriptionPlan = await response.json();
           setPlanData(data);
         } catch (error) {
@@ -149,9 +151,8 @@ export default function ClientDetailPage() {
     intervalSessionCredits = plan.intervalCredits;
   }
 
-  // Calculate Total Credits based on plan data:
-  const totalCredits =
-    plan.unlimited ? "Unlimited" : plan.credits;
+  // Calculate computed total credits using the updated client record values:
+  const computedTotalCredits = client.gymCredits === "unlimited" ? "Unlimited" : Number(client.gymCredits) + client.intervalCredits;
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -160,102 +161,43 @@ export default function ClientDetailPage() {
         <h1 className="text-3xl font-bold mb-4">Client Detail</h1>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <p>
-              <span className="font-semibold">Name:</span> {client.name}
-            </p>
-            <p>
-              <span className="font-semibold">Access Status:</span>{" "}
-              {client.accessStatus || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Address:</span>{" "}
-              {client.address || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Email:</span>{" "}
-              {client.email || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Date of Birth:</span>{" "}
-              {client.dateOfBirth || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Dietary Restrictions:</span>{" "}
-              {client.dietaryRestrictions || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Telephone:</span>{" "}
-              {client.telephone || "N/A"}
-            </p>
+            <p><span className="font-semibold">Name:</span> {client.name}</p>
+            <p><span className="font-semibold">Access Status:</span> {client.accessStatus || "N/A"}</p>
+            <p><span className="font-semibold">Address:</span> {client.address || "N/A"}</p>
+            <p><span className="font-semibold">Email:</span> {client.email || "N/A"}</p>
+            <p><span className="font-semibold">Date of Birth:</span> {client.dateOfBirth || "N/A"}</p>
+            <p><span className="font-semibold">Dietary Restrictions:</span> {client.dietaryRestrictions || "N/A"}</p>
+            <p><span className="font-semibold">Telephone:</span> {client.telephone || "N/A"}</p>
           </div>
           <div>
-            <p>
-              <span className="font-semibold">Subscription Plan:</span>{" "}
-              {plan.name}
-            </p>
-            <p>
-              <span className="font-semibold">Subscription Expiry:</span>{" "}
-              {client.subscriptionExpiry || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Created At:</span>{" "}
-              {client.createdAt || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Last Active:</span>{" "}
-              {client.lastActive || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Member Since:</span>{" "}
-              {client.memberSince || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Updated At:</span>{" "}
-              {client.updatedAt || "N/A"}
-            </p>
+            <p><span className="font-semibold">Subscription Plan:</span> {plan.name}</p>
+            <p><span className="font-semibold">Subscription Expiry:</span> {client.subscriptionExpiry || "N/A"}</p>
+            <p><span className="font-semibold">Created At:</span> {client.createdAt || "N/A"}</p>
+            <p><span className="font-semibold">Last Active:</span> {client.lastActive || "N/A"}</p>
+            <p><span className="font-semibold">Member Since:</span> {client.memberSince || "N/A"}</p>
+            <p><span className="font-semibold">Updated At:</span> {client.updatedAt || "N/A"}</p>
           </div>
         </div>
         {/* Additional details */}
         <div className="mt-4">
+          <p><span className="font-semibold">Fidelity Score:</span> {client.fidelityScore ?? "N/A"}</p>
+          <p><span className="font-semibold">Gender:</span> {client.gender || "N/A"}</p>
+          <p><span className="font-semibold">Health Goals:</span> {client.healthGoals || "N/A"}</p>
           <p>
-            <span className="font-semibold">Fidelity Score:</span>{" "}
-            {client.fidelityScore ?? "N/A"}
+            <span className="font-semibold">Height:</span> {client.height != null ? client.height : "N/A"}
+            <span className="font-semibold ml-4">Weight:</span> {client.weight != null ? client.weight : "N/A"}
           </p>
           <p>
-            <span className="font-semibold">Gender:</span>{" "}
-            {client.gender || "N/A"}
+            <span className="font-semibold">Emergency Contact:</span> {client.emergencyContact?.name || "N/A"} {client.emergencyContact?.phone ? `(${client.emergencyContact.phone})` : ""}
           </p>
           <p>
-            <span className="font-semibold">Health Goals:</span>{" "}
-            {client.healthGoals || "N/A"}
+            <span className="font-semibold">Notification Preferences:</span> Email: {client.notificationPreferences?.email ? "Yes" : "No"}, Push: {client.notificationPreferences?.push ? "Yes" : "No"}, SMS: {client.notificationPreferences?.sms ? "Yes" : "No"}
           </p>
           <p>
-            <span className="font-semibold">Height:</span>{" "}
-            {client.height != null ? client.height : "N/A"}
-            <span className="font-semibold ml-4">Weight:</span>{" "}
-            {client.weight != null ? client.weight : "N/A"}
+            <span className="font-semibold">Notification Settings:</span> Email: {client.notificationSettings?.email ? "Yes" : "No"}, Push: {client.notificationSettings?.push ? "Yes" : "No"}, SMS: {client.notificationSettings?.sms ? "Yes" : "No"}
           </p>
-          <p>
-            <span className="font-semibold">Emergency Contact:</span>{" "}
-            {client.emergencyContact?.name || "N/A"}{" "}
-            {client.emergencyContact?.phone ? `(${client.emergencyContact.phone})` : ""}
-          </p>
-          <p>
-            <span className="font-semibold">Notification Preferences:</span>{" "}
-            Email: {client.notificationPreferences?.email ? "Yes" : "No"}, Push: {client.notificationPreferences?.push ? "Yes" : "No"}, SMS: {client.notificationPreferences?.sms ? "Yes" : "No"}
-          </p>
-          <p>
-            <span className="font-semibold">Notification Settings:</span>{" "}
-            Email: {client.notificationSettings?.email ? "Yes" : "No"}, Push: {client.notificationSettings?.push ? "Yes" : "No"}, SMS: {client.notificationSettings?.sms ? "Yes" : "No"}
-          </p>
-          <p>
-            <span className="font-semibold">Onboarding Completed:</span>{" "}
-            {client.onboardingCompleted ? "Yes" : "No"}
-          </p>
-          <p>
-            <span className="font-semibold">Observations:</span>{" "}
-            {client.observations || "N/A"}
-          </p>
+          <p><span className="font-semibold">Onboarding Completed:</span> {client.onboardingCompleted ? "Yes" : "No"}</p>
+          <p><span className="font-semibold">Observations:</span> {client.observations || "N/A"}</p>
         </div>
       </div>
       {/* Credit Details Section */}
@@ -264,23 +206,23 @@ export default function ClientDetailPage() {
         {planLoading ? (
           <div>Loading subscription plan data...</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <p>
-                <span className="font-semibold">Gym Access Credits:</span>{" "}
-                {gymAccessCredits === "unlimited" ? "Unlimited access" : gymAccessCredits}
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-gray-500">Gym Access Credits</h3>
+              <p className="text-2xl font-semibold mt-1">
+                {client.gymCredits === "unlimited" ? "Unlimited" : client.gymCredits}
               </p>
             </div>
-            <div>
-              <p>
-                <span className="font-semibold">Interval Session Credits:</span>{" "}
-                {intervalSessionCredits}
-              </p>
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-gray-500">Interval Session Credits</h3>
+              <p className="text-2xl font-semibold mt-1">{client.intervalCredits}</p>
             </div>
-            <div>
-              <p>
-                <span className="font-semibold">Total Credits:</span>{" "}
-                {plan.unlimited ? "Unlimited" : plan.credits}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-sm font-medium text-gray-500">Total Credits</h3>
+              <p className="text-2xl font-semibold mt-1">
+                {client.gymCredits === "unlimited" 
+                  ? "Unlimited" 
+                  : (Number(client.gymCredits) || 0) + (client.intervalCredits || 0)}
               </p>
             </div>
           </div>
@@ -288,12 +230,13 @@ export default function ClientDetailPage() {
       </div>
       {/* Adjust Credits Button */}
       <div className="flex justify-end">
-        <button
+        <Button 
+          variant="outline"
           onClick={() => setIsCreditsModalOpen(true)}
-          className="bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded shadow"
+          className="ml-2"
         >
           Adjust Credits
-        </button>
+        </Button>
       </div>
       <CreditsAdjustmentModal
         isOpen={isCreditsModalOpen}
@@ -301,9 +244,9 @@ export default function ClientDetailPage() {
         clientId={client.id}
         clientName={client.name}
         subscriptionTier={plan.name}
-        currentGymCredits={gymAccessCredits}
-        currentIntervalCredits={intervalSessionCredits}
-        onCreditsUpdated={() => setRefreshData((r) => r + 1)}
+        currentGymCredits={client.gymCredits}
+        currentIntervalCredits={client.intervalCredits}
+        onCreditsUpdated={() => setRefreshTrigger(prev => prev + 1)}
       />
     </div>
   );

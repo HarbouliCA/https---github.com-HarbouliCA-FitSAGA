@@ -1,5 +1,15 @@
 import React from 'react';
 
-export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} />;
+interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  type?: 'text' | 'number' | 'email' | 'password';
+}
+
+export function Input({ type = 'text', className = '', ...props }: InputProps) {
+  return (
+    <input
+      type={type}
+      className={`rounded border p-2 ${className}`}
+      {...props}
+    />
+  );
 }

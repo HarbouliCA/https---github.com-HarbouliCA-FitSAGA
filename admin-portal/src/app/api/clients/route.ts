@@ -321,39 +321,26 @@ export async function POST(request: NextRequest) {
         updatedAt: now
       };
       
-      // If a subscription plan is provided, fetch the plan details and set credits
+      // Initialize credits structure
+      clientData.credits = {
+        total: 0,
+        intervalCredits: 0,
+        lastRefilled: now
+      };
+
+      // If a subscription plan is provided, set initial credits
       if (data.subscriptionPlan) {
-        try {
-          const planDoc = await adminDb.collection('subscriptionPlans').doc(data.subscriptionPlan).get();
+        const planDoc = await adminDb.collection('subscriptionPlans').doc(data.subscriptionPlan).get();
+        if (planDoc.exists) {
+          const plan = planDoc.data();
+          const intervalCredits = plan?.name?.toLowerCase().includes('gold') ? 4 : (plan?.intervalCredits || 0);
           
-          if (planDoc.exists) {
-            const plan = planDoc.data() as { 
-              credits?: number; 
-              intervalCredits?: number;
-              name?: string;
-            };
-            
-            // Set credits based on the plan's credits
-            clientData.credits = {
-              total: plan?.credits || 0,
-              intervalCredits: plan?.intervalCredits || 0,
-              lastRefilled: now
-            };
-            
-            console.log(`Setting credits from plan: ${plan?.credits || 0} credits, ${plan?.intervalCredits || 0} interval credits`);
-          } else {
-            // If plan doesn't exist, use provided credits or default to 0
-            clientData.credits = data.credits || 0;
-            console.log('Subscription plan not found, using default credits');
-          }
-        } catch (planError) {
-          console.error('Error fetching subscription plan:', planError);
-          // If there's an error fetching the plan, use provided credits or default to 0
-          clientData.credits = data.credits || 0;
+          clientData.credits = {
+            total: plan?.credits || 0,
+            intervalCredits,
+            lastRefilled: now
+          };
         }
-      } else {
-        // If no subscription plan, use provided credits or default to 0
-        clientData.credits = data.credits || 0;
       }
       
       await adminDb.collection('clients').doc(userRecord.uid).set(clientData);

@@ -84,6 +84,8 @@ interface ClientData {
   dietaryRestrictions?: string;
   createdAt?: FirebaseFirestore.Timestamp | string | Date | null;
   updatedAt?: FirebaseFirestore.Timestamp | string | Date | null;
+  gymCredits?: number | "unlimited";
+  intervalCredits?: number;
 }
 
 // GET /api/clients/[id] - Get a specific client
@@ -120,12 +122,16 @@ export async function GET(
     console.log('Raw client data from Firestore:', clientData);
     
     // Extract credits correctly, handling both number and object formats
-    let clientCredits = 0;
+    let gymCredits: number | "unlimited" = 0;
+    let intervalCredits = 0;
+
     if (typeof clientData.credits === 'number') {
-      clientCredits = clientData.credits;
+      // Legacy format: single number represents gym credits
+      gymCredits = clientData.credits;
     } else if (clientData.credits && typeof clientData.credits === 'object') {
-      // Sum both base credits and intervalCredits explicitly as numbers
-      clientCredits = Number(clientData.credits.total ?? 0) + Number(clientData.credits.intervalCredits ?? 0);
+      // New format: object with total and intervalCredits
+      gymCredits = clientData.credits.total ?? clientData.gymCredits ?? 0;
+      intervalCredits = clientData.credits.intervalCredits ?? clientData.intervalCredits ?? 0;
     }
     
     // Helper function to safely convert various date formats to Date objects
@@ -179,7 +185,10 @@ export async function GET(
       memberSince: safelyConvertToDate(clientData.memberSince),
       lastActive: safelyConvertToDate(clientData.lastActive),
       accessStatus: clientData.accessStatus || 'active',
-      credits: clientCredits,
+      gymCredits: clientData.gymCredits || gymCredits,
+      intervalCredits: clientData.intervalCredits || intervalCredits,
+      credits: gymCredits === "unlimited" ? "unlimited" : 
+        (Number(clientData.gymCredits || gymCredits) + Number(clientData.intervalCredits || intervalCredits)),
       fidelityScore: clientData.fidelityScore || 0,
       subscriptionPlan: clientData.subscriptionPlan || (clientData.subscription?.planId || null),
       subscriptionTier: clientData.subscriptionTier || (clientData.subscription?.planId || null),
@@ -202,11 +211,20 @@ export async function GET(
       const planDoc = await adminDb.collection('subscriptionPlans').doc(client.subscriptionPlan).get();
       if (planDoc.exists) {
         const planData = planDoc.data();
-        // Use subscriptionTier field to check for 'gold' if available
-        const extra = (client.subscriptionTier && client.subscriptionTier.toLowerCase().includes('gold'))
-          ? 4
-          : (planData?.intervalCredits || 0);
-        client.credits = (planData?.credits || 0) + extra;
+        // Check if it's a premium plan that should have unlimited credits
+        if (planData?.unlimited) {
+          client.gymCredits = "unlimited";
+          client.credits = "unlimited";
+        } else {
+          // Only update intervalCredits if not already set
+          if (!client.intervalCredits) {
+            client.intervalCredits = (client.subscriptionTier && client.subscriptionTier.toLowerCase().includes('gold'))
+              ? 4
+              : (planData?.intervalCredits || 0);
+          }
+          // Recalculate total credits
+          client.credits = (typeof client.gymCredits === "number" ? client.gymCredits : 0) + client.intervalCredits;
+        }
       }
     }
 

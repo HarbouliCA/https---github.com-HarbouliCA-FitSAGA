@@ -67,10 +67,12 @@ export async function POST(
       }
     }
     
-    // Calculate new credits based on plan change: sum of base credits and interval credits
-    const newPlanCredits = (plan.credits || 0) + (plan.intervalCredits || 0);
-    const adjustedCredits = newPlanCredits;
-    console.log(`Setting credits to new plan value: ${adjustedCredits}`);
+    // Calculate new credits based on plan
+    const newCredits = {
+      total: plan.unlimited ? "unlimited" : (plan.credits || 0),
+      intervalCredits: plan.name?.toLowerCase().includes('gold') ? 4 : (plan.intervalCredits || 0),
+      lastRefilled: new Date()
+    };
     
     // Update client with subscription and adjusted credits
     await clientRef.update({
@@ -81,13 +83,9 @@ export async function POST(
         status: 'active',
         autoRenew: true
       },
-      subscriptionTier: planId, // Set the subscriptionTier to the planId
-      subscriptionExpiry: endDate, // Set the subscriptionExpiry to the endDate
-      credits: {
-        total: adjustedCredits,
-        intervalCredits: plan.intervalCredits || 0,
-        lastRefilled: new Date()
-      }
+      subscriptionTier: planId,
+      subscriptionExpiry: endDate,
+      credits: newCredits
     });
     
     return NextResponse.json({ success: true });
@@ -145,3 +143,54 @@ export async function GET(
       return NextResponse.json({ error: 'Server error' }, { status: 500 });
     }
   }
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    if (!db) {
+      return NextResponse.json({ error: 'Database not initialized' }, { status: 500 });
+    }
+
+    const clientId = params.id;
+    const { gymCredits, intervalCredits, reason } = await request.json();
+
+    // Verify client exists
+    const clientRef = db.collection('clients').doc(clientId);
+    const clientDoc = await clientRef.get();
+
+    if (!clientDoc.exists) {
+      return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+    }
+
+    // Prepare update data
+    const updateData: any = {
+      gymCredits: gymCredits === 'unlimited' ? 'unlimited' : Number(gymCredits),
+      intervalCredits: Number(intervalCredits),
+      credits: gymCredits === 'unlimited' ? 'unlimited' : (Number(gymCredits) + Number(intervalCredits)),
+      updatedAt: new Date()
+    };
+
+    // Update client with new credit values
+    await clientRef.update(updateData);
+
+    // Log the credit adjustment if reason is provided
+    if (reason) {
+      await db.collection('creditAdjustments').add({
+        clientId,
+        previousGymCredits: clientDoc.data()?.gymCredits,
+        previousIntervalCredits: clientDoc.data()?.intervalCredits,
+        newGymCredits: updateData.gymCredits,
+        newIntervalCredits: updateData.intervalCredits,
+        reason,
+        timestamp: new Date()
+      });
+    }
+
+    return NextResponse.json({ success: true, credits: updateData });
+  } catch (error) {
+    console.error('Error adjusting credits:', error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}

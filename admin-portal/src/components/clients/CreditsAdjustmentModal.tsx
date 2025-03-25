@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Dialog } from '@headlessui/react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Label } from '@/components/ui/Label';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { Label } from '../ui/Label';
 import { toast } from 'react-hot-toast';
 
 interface CreditsAdjustmentModalProps {
@@ -34,9 +34,10 @@ export default function CreditsAdjustmentModal({
 
   useEffect(() => {
     if (isOpen) {
-      applyPlanDefaults();
+      setGymCredits(currentGymCredits);
+      setIntervalCredits(currentIntervalCredits);
     }
-  }, [isOpen, subscriptionTier]);
+  }, [isOpen, currentGymCredits, currentIntervalCredits]);
 
   const applyPlanDefaults = () => {
     switch (subscriptionTier.toLowerCase()) {
@@ -70,19 +71,17 @@ export default function CreditsAdjustmentModal({
       const response = await fetch(`/api/clients/${clientId}/credits`, {
         method: 'PATCH',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           gymCredits,
           intervalCredits,
           reason
-        })
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to adjust credits');
-      }
-
+      if (!response.ok) throw new Error('Failed to adjust credits');
+      
       toast.success('Credits adjusted successfully');
       onCreditsUpdated();
       onClose();
@@ -112,7 +111,12 @@ export default function CreditsAdjustmentModal({
             <p className="text-sm text-gray-500 mb-2">
               Subscription Plan: <span className="font-medium">{subscriptionTier}</span>
             </p>
-<Button variant="secondary" size="sm" onClick={applyPlanDefaults} className="w-full mb-4">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={applyPlanDefaults}
+              className="w-full mb-4"
+            >
               Apply Plan Defaults
             </Button>
           </div>
@@ -123,15 +127,35 @@ export default function CreditsAdjustmentModal({
               <div className="flex items-center mt-1">
                 {gymCredits === "unlimited" ? (
                   <>
-                    <Input type="text" id="gymCredits" value="Unlimited" disabled className="flex-1 mr-2" />
-<Button variant="secondary" onClick={() => setGymCredits(8)} size="sm">
+                    <Input 
+                      type="text" 
+                      id="gymCredits" 
+                      value="Unlimited" 
+                      disabled 
+                      className="flex-1 mr-2"
+                    />
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setGymCredits(8)}
+                      size="sm"
+                    >
                       Set Limited
                     </Button>
                   </>
                 ) : (
                   <>
-<Input type="number" id="gymCredits" value={gymCredits} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGymCredits(parseInt(e.target.value) || 0)} className="flex-1 mr-2" />
-<Button variant="secondary" onClick={() => setGymCredits("unlimited")} size="sm">
+                    <Input 
+                      type="number" 
+                      id="gymCredits" 
+                      value={gymCredits} 
+                      onChange={(e) => setGymCredits(Number(e.target.value))}
+                      className="flex-1 mr-2"
+                    />
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setGymCredits("unlimited")}
+                      size="sm"
+                    >
                       Set Unlimited
                     </Button>
                   </>
@@ -141,23 +165,28 @@ export default function CreditsAdjustmentModal({
 
             <div>
               <Label htmlFor="intervalCredits">Interval Session Credits</Label>
-<Input type="number" id="intervalCredits" value={intervalCredits} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setIntervalCredits(parseInt(e.target.value) || 0)} />
+              <Input 
+                type="number" 
+                id="intervalCredits" 
+                value={intervalCredits} 
+                onChange={(e) => setIntervalCredits(Number(e.target.value))}
+              />
             </div>
 
             <div>
               <Label htmlFor="reason">Reason for Adjustment</Label>
-<Input
-                type="text"
-                id="reason"
-                value={reason}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setReason(e.target.value)}
+              <Input 
+                type="text" 
+                id="reason" 
+                value={reason} 
+                onChange={(e) => setReason(e.target.value)}
                 placeholder="Why are you adjusting credits?"
               />
             </div>
           </div>
 
           <div className="flex justify-end space-x-2">
-<Button variant="secondary" onClick={onClose} disabled={loading}>
+            <Button variant="outline" onClick={onClose} disabled={loading}>
               Cancel
             </Button>
             <Button onClick={handleSubmit} disabled={loading}>

@@ -1,5 +1,17 @@
 import React from 'react';
 
-export function Label(props: React.LabelHTMLAttributes<HTMLLabelElement>) {
-  return <label {...props} />;
+interface LabelProps extends React.LabelHTMLAttributes<HTMLLabelElement> {
+  htmlFor: string;
+}
+
+export function Label({ htmlFor, children, className = '', ...props }: LabelProps) {
+  return (
+    <label
+      htmlFor={htmlFor}
+      className={`block text-sm font-medium mb-1 ${className}`}
+      {...props}
+    >
+      {children}
+    </label>
+  );
 }
