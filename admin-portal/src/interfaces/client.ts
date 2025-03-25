@@ -4,8 +4,13 @@ export interface Client {
   accessStatus?: string;
   address?: string;
   createdAt?: string;
-  credits?: number; // if available from client record
-  gymCredits: number | "unlimited";
+  credits?: number | {
+    total: number | string | "unlimited";
+    intervalCredits?: number;
+    lastRefilled?: Date;
+    [key: string]: any; // Allow for other properties
+  };
+  gymCredits?: number | "unlimited" | string;
   dateOfBirth?: string;
   dietaryRestrictions?: string;
   email?: string;
@@ -37,9 +42,14 @@ export interface Client {
   recentBookings?: any[];
   role?: string;
   subscriptionExpiry?: string;
-  subscriptionPlan: string; // plan id stored in client record
+  subscriptionPlan: string;
+  subscriptionTier?: string;
   telephone?: string;
   updatedAt?: string;
   weight?: number | null;
-  intervalCredits: number;
+  intervalCredits?: number;
+  accountNumber?: string;
+  bicCode?: string;
+  accountHolder?: string;
+  bankName?: string;
 } 

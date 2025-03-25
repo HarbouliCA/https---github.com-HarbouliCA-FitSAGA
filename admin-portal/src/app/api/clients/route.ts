@@ -83,14 +83,21 @@ export async function GET(request: NextRequest) {
           };
         } else if (data.credits && typeof data.credits === 'object') {
           // Try to extract from credits object if it exists
-          const totalCredits = data.credits.total || 
-                              data.credits.value || 
-                              data.credits.amount || 
-                              data.credits.balance || 0;
+          let totalCredits;
+          
+          if (data.credits.total === "unlimited" || data.gymCredits === "unlimited") {
+            totalCredits = "unlimited";
+          } else {
+            totalCredits = data.credits.total || 
+                          data.credits.value || 
+                          data.credits.amount || 
+                          data.credits.balance || 
+                          data.gymCredits || 0;
+          }
           
           clientCredits = {
             total: totalCredits,
-            intervalCredits: data.credits.intervalCredits || 0,
+            intervalCredits: data.credits.intervalCredits || data.intervalCredits || 0,
             lastRefilled: data.credits.lastRefilled ? 
               (data.credits.lastRefilled.toDate ? data.credits.lastRefilled.toDate() : new Date(data.credits.lastRefilled)) 
               : new Date()

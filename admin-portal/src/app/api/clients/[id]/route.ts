@@ -86,6 +86,10 @@ interface ClientData {
   updatedAt?: FirebaseFirestore.Timestamp | string | Date | null;
   gymCredits?: number | "unlimited";
   intervalCredits?: number;
+  accountNumber?: string;
+  bicCode?: string;
+  accountHolder?: string;
+  bankName?: string;
 }
 
 // GET /api/clients/[id] - Get a specific client
@@ -205,6 +209,10 @@ export async function GET(
       updatedAt: safelyConvertToDate(clientData.updatedAt),
       healthGoals: clientData.healthGoals || [],
       dietaryRestrictions: clientData.dietaryRestrictions || 'N/A',
+      accountNumber: clientData.accountNumber || '',
+      bicCode: clientData.bicCode || '',
+      accountHolder: clientData.accountHolder || '',
+      bankName: clientData.bankName || '',
     };
     
     // Log the mapped client data for debugging

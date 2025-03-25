@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import { PageNavigation } from '@/components/layout/PageNavigation';
 import { Client } from '@/types/client';
 import { toast } from 'react-hot-toast';
+import { getFirestore, doc, setDoc } from 'firebase/firestore'; // Import necessary functions
+
+const firestore = getFirestore(); // Initialize Firestore
 
 export default function EditClientPage({ params }: { params: { id: string } }) {
   // Don't try to unwrap params - just use the id directly
@@ -31,29 +34,27 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
       sms: false
     },
     dietaryRestrictions: '',
-    emergencyContact: {
-      name: '',
-      phone: '',
-      relationship: ''
-    }
+    bicCode: '',
+    bankName: '',
+    requestBankDetails: false,
+    resendMandateFile: false,
+    accountNumber: '',
+    accountHolder: '',
   });
 
   useEffect(() => {
-    const fetchClient = async () => {
+    async function fetchClient() {
       try {
-        // Use unwrapped id instead of params.id
-        const response = await fetch(`/api/clients/${id}`);
-        
-        if (!response.ok) {
-          if (response.status === 404) {
-            toast.error('Client not found');
-            router.push('/dashboard/clients');
-            return;
-          }
-          throw new Error('Failed to fetch client data');
-        }
-        
+        const response = await fetch(`/api/clients/${params.id}?t=${Date.now()}`, { cache: "no-store" });
         const data = await response.json();
+        console.log('Fetched client data for edit:', data);
+        console.log('Bank details for edit:', {
+          accountNumber: data.accountNumber,
+          bicCode: data.bicCode,
+          accountHolder: data.accountHolder,
+          bankName: data.bankName
+        });
+        
         setClient(data);
         setFormData({
           name: data.name || '',
@@ -70,22 +71,24 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
             sms: data.notificationPreferences?.sms ?? false
           },
           dietaryRestrictions: data.dietaryRestrictions || '',
-          emergencyContact: {
-            name: data.emergencyContact?.name || '',
-            phone: data.emergencyContact?.phone || '',
-            relationship: data.emergencyContact?.relationship || ''
-          }
+          bicCode: data.bicCode || '',
+          bankName: data.bankName || '',
+          requestBankDetails: data.requestBankDetails || false,
+          resendMandateFile: data.resendMandateFile || false,
+          accountNumber: data.accountNumber || '',
+          accountHolder: data.accountHolder || '',
         });
       } catch (error) {
-        console.error('Error fetching client:', error);
-        toast.error('Failed to load client data');
+        console.error("Error fetching client data:", error);
       } finally {
         setLoading(false);
       }
-    };
-
-    fetchClient();
-  }, [id, router]); // Use id instead of params.id
+    }
+    
+    if (params.id) {
+      fetchClient();
+    }
+  }, [params.id]);
   
   // Fetch subscription plans
   useEffect(() => {
@@ -111,26 +114,18 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
     
     setSaving(true);
     try {
-      const response = await fetch(`/api/clients/${client.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...client,
-          ...formData
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to update client');
-      }
-      
+      const clientRef = doc(firestore, 'clients', id); // Use doc to get a document reference
+      await setDoc(clientRef, {
+        ...client,
+        ...formData
+      }, { merge: true });
+
+      console.log('Client information saved:', formData);
       toast.success('Client updated successfully');
       router.push(`/dashboard/clients/${client.id}`);
     } catch (error) {
-      console.error('Error updating client:', error);
-      toast.error('Failed to update client');
+      console.error('Error saving client information:', error);
+      toast.error('Failed to save client information');
     } finally {
       setSaving(false);
     }
@@ -171,6 +166,30 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
         }
       }));
     }
+  };
+
+  const handleRequestBankDetails = () => {
+    setFormData(prev => ({
+      ...prev,
+      requestBankDetails: true
+    }));
+  };
+
+  const handleResendMandateFile = () => {
+    setFormData(prev => ({
+      ...prev,
+      resendMandateFile: true
+    }));
+  };
+
+  const handleDeleteBankDetails = () => {
+    setFormData(prev => ({
+      ...prev,
+      bicCode: '',
+      bankName: '',
+      requestBankDetails: false,
+      resendMandateFile: false
+    }));
   };
 
   if (loading) {
@@ -357,51 +376,48 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
             </div>
           </div>
           
-          {/* Emergency Contact */}
-          <div className="p-6 border-t border-gray-200 space-y-6">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900">Emergency Contact</h3>
-              <p className="mt-1 text-sm text-gray-500">Emergency contact information.</p>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div>
-                <label htmlFor="emergencyContact.name" className="block text-sm font-medium text-gray-700">
-                  Contact Name
-                </label>
+          {/* Bank Details */}
+          <div className="p-6">
+            <h3 className="text-lg font-medium text-gray-900">Detalles bancarios</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+              <div className="flex items-center">
                 <input
                   type="text"
-                  name="emergencyContact.name"
-                  id="emergencyContact.name"
-                  value={formData.emergencyContact.name}
+                  name="accountNumber"
+                  placeholder="Número de cuenta"
+                  value={formData.accountNumber}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                />
+                <button type="button" className="ml-2 btn-secondary">Revisar IBAN</button>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="text"
+                  name="bicCode"
+                  placeholder="Código BIC"
+                  value={formData.bicCode}
+                  onChange={handleInputChange}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                />
+                <span className="ml-2 text-blue-500 cursor-pointer">ℹ️</span>
+              </div>
+              <div>
+                <input
+                  type="text"
+                  name="accountHolder"
+                  placeholder="Titular de la cuenta"
+                  value={formData.accountHolder}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 />
               </div>
-              
               <div>
-                <label htmlFor="emergencyContact.phone" className="block text-sm font-medium text-gray-700">
-                  Contact Phone
-                </label>
-                <input
-                  type="tel"
-                  name="emergencyContact.phone"
-                  id="emergencyContact.phone"
-                  value={formData.emergencyContact.phone}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-                />
-              </div>
-              
-              <div>
-                <label htmlFor="emergencyContact.relationship" className="block text-sm font-medium text-gray-700">
-                  Relationship
-                </label>
                 <input
                   type="text"
-                  name="emergencyContact.relationship"
-                  id="emergencyContact.relationship"
-                  value={formData.emergencyContact.relationship}
+                  name="bankName"
+                  placeholder="Nombre del banco"
+                  value={formData.bankName}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 />

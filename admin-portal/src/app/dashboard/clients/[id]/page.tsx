@@ -56,6 +56,10 @@ interface Client {
   updatedAt?: string;
   weight?: number | null;
   intervalCredits: number;
+  accountNumber?: string;
+  bicCode?: string;
+  accountHolder?: string;
+  bankName?: string;
 }
 
 interface SubscriptionPlan {
@@ -80,9 +84,16 @@ export default function ClientDetailPage() {
   useEffect(() => {
     async function fetchClient() {
       try {
+        console.log('Fetching client data for ID:', id);
         const response = await fetch(`/api/clients/${id}?t=${Date.now()}`, { cache: "no-store" });
         const data: Client = await response.json();
-        console.log('Fetched client data:', data);
+        console.log('Fetched client data:', data); // Log the entire client data
+        console.log('Bank details:', {
+          accountNumber: data.accountNumber,
+          bicCode: data.bicCode,
+          accountHolder: data.accountHolder,
+          bankName: data.bankName
+        });
         setClient(data);
       } catch (error) {
         console.error("Error fetching client data:", error);
@@ -99,17 +110,23 @@ export default function ClientDetailPage() {
     async function fetchSubscriptionPlan() {
       if (client) {
         try {
-          const response = await fetch(`/api/subscription-plans/${client.subscriptionPlan}`);
-          const data: SubscriptionPlan = await response.json();
-          setPlanData(data);
+          const planId = client.subscriptionPlan;
+          if (planId) {
+            const response = await fetch(`/api/subscription-plans/${planId}`);
+            const data = await response.json();
+            setPlanData(data);
+            setPlanLoading(false);
+          }
         } catch (error) {
-          console.error("Error fetching subscription plan data:", error);
-        } finally {
+          console.error("Error fetching subscription plan:", error);
           setPlanLoading(false);
         }
       }
     }
-    fetchSubscriptionPlan();
+    
+    if (client) {
+      fetchSubscriptionPlan();
+    }
   }, [client]);
 
   if (loading) {
@@ -121,44 +138,24 @@ export default function ClientDetailPage() {
   }
 
   // Use the fetched subscription plan data; if not available, fallback to default values.
-  const plan = planData || {
-    id: client.subscriptionPlan,
-    name: client.subscriptionPlan, // fallback displays ID
-    credits: client.credits || 0,
-    intervalCredits: client.intervalCredits,
-    unlimited: false,
+  const plan = {
+    name: planData?.name || 'No Plan',
+    credits: planData?.credits || 0,
+    intervalCredits: planData?.intervalCredits || 0
   };
 
-  // Determine credit details based on subscription plan using known IDs:
-  let gymAccessCredits: number | "unlimited";
-  let intervalSessionCredits: number;
-  if (plan.id === "8rYWfrb4gglJTfDfVm74") {
-    // Basic Plan: Gym Access Credits: 8, Interval Credits: 0
-    gymAccessCredits = 8;
-    intervalSessionCredits = 0;
-  } else if (plan.id === "cUZ0NyHWzejBstSraraL") {
-    // Gold Plan: Gym Access Credits: 8, Interval Credits: 4
-    gymAccessCredits = 8;
-    intervalSessionCredits = 4;
-  } else if (plan.id === "T8RoIBbuhSx9YPxIhibB") {
-    // Premium Plan: Gym Access Credits: unlimited, Interval Credits: 4
-    gymAccessCredits = "unlimited";
-    intervalSessionCredits = 4;
-  } else {
-    // Fallback: use plan data if available
-    if (plan.unlimited) {
-      gymAccessCredits = "unlimited";
-    } else {
-      gymAccessCredits = plan.credits - plan.intervalCredits;
-    }
-    intervalSessionCredits = plan.intervalCredits;
-  }
-
-  // Calculate computed total credits using the updated client record values:
-  const computedTotalCredits = client.gymCredits === "unlimited" ? "Unlimited" : Number(client.gymCredits) + client.intervalCredits;
+  // Calculate gym access credits
+  const gymAccessCredits = client.gymCredits === "unlimited" 
+    ? "Unlimited" 
+    : client.gymCredits;
 
   // Ensure the correct interval credits are displayed
   const intervalSessionCreditsFromClient = client?.intervalCredits || 0;
+
+  // Calculate computed total credits using the updated client record values:
+  const computedTotalCredits = client.gymCredits === "unlimited" 
+    ? "Unlimited" 
+    : Number(client.gymCredits) + intervalSessionCreditsFromClient;
 
   // Log the health goals outside of the JSX
   console.log('Health Goals:', client.healthGoals);
@@ -303,6 +300,32 @@ export default function ClientDetailPage() {
             <div className="grid grid-cols-2 items-center p-3">
               <span className="text-gray-600">Dietary Restrictions</span>
               <span>{client.dietaryRestrictions || 'N/A'}</span>
+            </div>
+          </div>
+        </Card>
+
+        {/* Bank Details Section */}
+        <Card className="p-6">
+          <h2 className="text-xl font-semibold mb-4">Detalles bancarios</h2>
+          <div className="grid gap-4">
+            <div className="grid grid-cols-2 items-center bg-gray-50 p-3 rounded-lg">
+              <span className="text-gray-600">Número de cuenta</span>
+              <span>{client.accountNumber || 'N/A'}</span>
+            </div>
+            
+            <div className="grid grid-cols-2 items-center p-3">
+              <span className="text-gray-600">Código BIC</span>
+              <span>{client.bicCode || 'N/A'}</span>
+            </div>
+
+            <div className="grid grid-cols-2 items-center bg-gray-50 p-3 rounded-lg">
+              <span className="text-gray-600">Titular de la cuenta</span>
+              <span>{client.accountHolder || 'N/A'}</span>
+            </div>
+
+            <div className="grid grid-cols-2 items-center p-3">
+              <span className="text-gray-600">Nombre del banco</span>
+              <span>{client.bankName || 'N/A'}</span>
             </div>
           </div>
         </Card>

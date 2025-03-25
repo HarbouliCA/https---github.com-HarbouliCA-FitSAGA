@@ -15,7 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { PageNavigation } from '@/components/layout/PageNavigation';
 import { DropdownMenu } from '@/components/ui/DropdownMenu';
-import { Client } from '@/types/client';
+import { Client } from '@/interfaces/client';
 import { toast } from 'react-hot-toast';
 
 export default function ClientsPage() {
@@ -313,6 +313,70 @@ export default function ClientsPage() {
     }
   };
 
+  // Function to calculate total available credits
+  const calculateTotalCredits = (client: Client) => {
+    console.log(`Calculating credits for client: ${client.name}, Plan: ${client.subscriptionPlan || client.subscriptionTier || 'None'}`);
+    
+    // First check if client has unlimited credits in any format
+    if (
+      (client.credits && typeof client.credits === 'object' && client.credits.total === "unlimited") ||
+      client.gymCredits === "unlimited" ||
+      (typeof client.credits === 'string' && client.credits === "unlimited")
+    ) {
+      console.log('Found unlimited credits in credits object or gymCredits');
+      return "Unlimited";
+    }
+    
+    // Check if the client has a premium subscription plan that indicates unlimited credits
+    if (client.subscriptionPlan || client.subscriptionTier) {
+      const planName = (client.subscriptionPlan || client.subscriptionTier || '').toString().toLowerCase();
+      console.log(`Checking plan name: "${planName}"`);
+      
+      // Check for exact matches first
+      if (planName === 'premium' || planName === 'gold') {
+        console.log('Found exact match for premium/gold plan');
+        return "Unlimited";
+      }
+      
+      // Then check for partial matches
+      if (planName.includes('premium') || planName.includes('gold') || planName.includes('unlimited')) {
+        console.log('Found partial match for premium/gold/unlimited in plan name');
+        return "Unlimited";
+      }
+    }
+    
+    // Check if credits is an object with a total property
+    if (client.credits && typeof client.credits === 'object' && 'total' in client.credits) {
+      const creditsObj = client.credits as { total?: number | string };
+      console.log(`Credits object total: ${creditsObj.total}`);
+      
+      // Return the total credits if it exists and is not zero
+      if (creditsObj.total !== undefined && creditsObj.total !== 0) {
+        return creditsObj.total;
+      }
+    }
+    
+    // Handle legacy format where credits is a direct number
+    if (typeof client.credits === 'number') {
+      console.log(`Credits as number: ${client.credits}`);
+      if (client.credits > 0) {
+        return client.credits;
+      }
+    }
+    
+    // Handle gymCredits property if it exists
+    if (client.gymCredits !== undefined) {
+      console.log(`gymCredits: ${client.gymCredits}`);
+      if (client.gymCredits !== 0) {
+        return client.gymCredits;
+      }
+    }
+    
+    console.log('No credits found, returning 0');
+    // Default case if no credits information is found
+    return 0;
+  };
+
   return (
     <div className="space-y-6">
       <PageNavigation 
@@ -479,7 +543,7 @@ export default function ClientsPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{getTotalCredits(client)} credits</div>
+                      <div className="text-sm text-gray-900">{calculateTotalCredits(client)}</div>
                       <div className="text-sm text-gray-500">{client.fidelityScore} loyalty points</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -491,7 +555,7 @@ export default function ClientsPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {getStatusBadge(client.accessStatus)}
+                      {getStatusBadge(client.accessStatus || 'unknown')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <DropdownMenu
