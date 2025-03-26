@@ -9,6 +9,17 @@ import { getFirestore, doc, setDoc } from 'firebase/firestore'; // Import necess
 
 const firestore = getFirestore(); // Initialize Firestore
 
+// Add this validation function at the top of your component or in a separate utils file
+const validateSpanishIBAN = (iban: string): boolean => {
+  // Remove spaces and convert to uppercase
+  const cleanedIBAN = iban.replace(/\s/g, '').toUpperCase();
+  
+  // Spanish IBAN format: ES + 2 check digits + 20 digits (bank code + account number)
+  const spanishIBANRegex = /^ES[0-9]{2}[0-9]{20}$/;
+  
+  return spanishIBANRegex.test(cleanedIBAN);
+};
+
 export default function EditClientPage({ params }: { params: { id: string } }) {
   // Don't try to unwrap params - just use the id directly
   const id = params.id;
@@ -42,6 +53,9 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
     accountHolder: '',
   });
 
+  // Add state for IBAN validation
+  const [ibanError, setIbanError] = useState<string | null>(null);
+  
   useEffect(() => {
     async function fetchClient() {
       try {
@@ -131,27 +145,23 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
     }
   };
 
+  // Update the handleInputChange function to validate IBAN
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => {
-      const newData = { ...prev };
-      if (name.includes('.')) {
-        const [parent, child] = name.split('.');
-        (newData as any)[parent] = {
-          ...(newData as any)[parent],
-          [child]: value
-        };
+    
+    // Validate IBAN when the account number field changes
+    if (name === 'accountNumber') {
+      if (value && !validateSpanishIBAN(value)) {
+        setIbanError('Invalid Spanish IBAN format. Should be: ES + 22 digits');
       } else {
-        (newData as any)[name] = value;
-        
-        // If subscriptionTier is being changed, also update subscriptionPlan
-        if (name === 'subscriptionTier') {
-          (newData as any)['subscriptionPlan'] = value;
-          console.log(`Updating both subscriptionTier and subscriptionPlan to: ${value}`);
-        }
+        setIbanError(null);
       }
-      return newData;
-    });
+    }
+    
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -380,16 +390,19 @@ export default function EditClientPage({ params }: { params: { id: string } }) {
           <div className="p-6">
             <h3 className="text-lg font-medium text-gray-900">Detalles bancarios</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-              <div className="flex items-center">
+              <div>
                 <input
                   type="text"
                   name="accountNumber"
-                  placeholder="Número de cuenta"
+                  placeholder="Número de cuenta (IBAN)"
                   value={formData.accountNumber}
                   onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  className={`mt-1 block w-full rounded-md ${ibanError ? 'border-red-500' : 'border-gray-300'} shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm`}
                 />
-                <button type="button" className="ml-2 btn-secondary">Revisar IBAN</button>
+                {ibanError && (
+                  <p className="mt-1 text-sm text-red-600">{ibanError}</p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">Format: ES + 22 digits (e.g., ES9121000418450200051332)</p>
               </div>
               <div className="flex items-center">
                 <input
