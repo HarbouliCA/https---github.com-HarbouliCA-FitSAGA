@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { VideoMetadata } from '@/interfaces/tutorial';
 import metadataService from '@/services/metadataService';
 import azureStorageService from '@/services/azureStorageService';
@@ -10,11 +10,16 @@ interface VideoBrowserProps {
   onSelectVideo: (video: VideoMetadata) => void;
 }
 
+const ITEMS_PER_PAGE = 10;
+
 export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
   const [videos, setVideos] = useState<VideoMetadata[]>([]);
   const [filteredVideos, setFilteredVideos] = useState<VideoMetadata[]>([]);
+  const [displayedVideos, setDisplayedVideos] = useState<VideoMetadata[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   
   // Filter states
   const [activityFilter, setActivityFilter] = useState<string>('');
@@ -27,6 +32,35 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
   const [types, setTypes] = useState<string[]>([]);
   const [bodyParts, setBodyParts] = useState<string[]>([]);
 
+  // Intersection Observer for infinite scroll
+  const observer = useRef<IntersectionObserver>();
+  const lastVideoElementRef = useCallback((node: HTMLDivElement) => {
+    if (loading) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prevPage => prevPage + 1);
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, [loading, hasMore]);
+
+  // Format video name to be more user-friendly
+  const formatVideoName = (video: VideoMetadata): string => {
+    if (!video.name) return video.activity || 'Untitled Video';
+    
+    // Remove numeric prefixes and file extensions
+    let name = video.name.replace(/^\d+_/, '').replace(/\.\w+$/, '');
+    
+    // Convert to Title Case and replace underscores/dashes with spaces
+    name = name.replace(/[_-]/g, ' ')
+               .split(' ')
+               .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+               .join(' ');
+    
+    return name;
+  };
+
   useEffect(() => {
     const fetchVideos = async () => {
       try {
@@ -36,9 +70,9 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
         setFilteredVideos(allMetadata);
         
         // Extract unique filter options
-        const uniqueActivities = [...new Set(allMetadata.map(video => video.activity))];
-        const uniqueTypes = [...new Set(allMetadata.map(video => video.type))];
-        const uniqueBodyParts = [...new Set(allMetadata.map(video => video.bodyPart))];
+        const uniqueActivities = [...new Set(allMetadata.map(video => video.activity))].filter(Boolean);
+        const uniqueTypes = [...new Set(allMetadata.map(video => video.type))].filter(Boolean);
+        const uniqueBodyParts = [...new Set(allMetadata.map(video => video.bodyPart))].filter(Boolean);
         
         setActivities(uniqueActivities);
         setTypes(uniqueTypes);
@@ -54,8 +88,8 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
     fetchVideos();
   }, []);
 
+  // Apply filters
   useEffect(() => {
-    // Apply filters
     let result = [...videos];
     
     if (activityFilter) {
@@ -73,15 +107,26 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(video => 
-        video.name.toLowerCase().includes(query) || 
-        video.activity.toLowerCase().includes(query) ||
-        video.type.toLowerCase().includes(query) ||
-        video.bodyPart.toLowerCase().includes(query)
+        (video.name?.toLowerCase().includes(query) || '') ||
+        (video.activity?.toLowerCase().includes(query) || '') ||
+        (video.type?.toLowerCase().includes(query) || '') ||
+        (video.bodyPart?.toLowerCase().includes(query) || '')
       );
     }
     
     setFilteredVideos(result);
+    setPage(1); // Reset pagination when filters change
+    setHasMore(true);
   }, [videos, activityFilter, typeFilter, bodyPartFilter, searchQuery]);
+
+  // Handle pagination
+  useEffect(() => {
+    const startIndex = 0;
+    const endIndex = page * ITEMS_PER_PAGE;
+    const paginatedVideos = filteredVideos.slice(startIndex, endIndex);
+    setDisplayedVideos(paginatedVideos);
+    setHasMore(endIndex < filteredVideos.length);
+  }, [filteredVideos, page]);
 
   const resetFilters = () => {
     setActivityFilter('');
@@ -90,8 +135,30 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
     setSearchQuery('');
   };
 
-  if (loading) return <div className="flex justify-center p-8"><div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div></div>;
-  
+  const getThumbnailProxyUrl = (thumbnailUrl: string) => {
+    if (!thumbnailUrl) return '';
+    
+    try {
+      // Extract the base path and SAS token
+      const [basePath, sasToken] = thumbnailUrl.split('?');
+      const match = basePath.match(/sagathumbnails\/(.+)$/);
+      if (!match) return '';
+      
+      const path = decodeURIComponent(match[1]); // First decode in case it's already encoded
+      
+      // Use the latest SAS token from the original URL if it exists
+      if (sasToken && sasToken.includes('sv=2024-11-04')) {
+        return `/api/image-proxy?path=${encodeURIComponent(path)}?${sasToken}`;
+      }
+      
+      // Otherwise just pass the path and let the proxy use the latest token
+      return `/api/image-proxy?path=${encodeURIComponent(path)}`;
+    } catch (error) {
+      console.error('Error processing thumbnail URL:', error);
+      return '';
+    }
+  };
+
   if (error) return <div className="text-red-500 p-4">{error}</div>;
 
   return (
@@ -144,7 +211,7 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
             <select 
               value={bodyPartFilter} 
               onChange={(e) => setBodyPartFilter(e.target.value)}
-              className="p-2 border rounded"
+              className="p-2 border rounded w-full"
             >
               <option value="">All Body Parts</option>
               {bodyParts.map((bodyPart, index) => (
@@ -156,7 +223,10 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
           </div>
         </div>
         
-        <div className="flex justify-end">
+        <div className="flex justify-between items-center">
+          <div className="text-sm text-gray-600">
+            Showing {displayedVideos.length} of {filteredVideos.length} videos
+          </div>
           <button 
             onClick={resetFilters}
             className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
@@ -167,41 +237,50 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
       </div>
       
       {/* Video Grid */}
-      {filteredVideos.length === 0 ? (
+      {displayedVideos.length === 0 && !loading ? (
         <div className="text-center py-8 text-gray-500">
           No videos match your filters. Try adjusting your search criteria.
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredVideos.map((video, index) => (
+          {displayedVideos.map((video, index) => (
             <div 
-              key={`video-${video.videoId || index}`} 
-              className="border p-4 rounded cursor-pointer"
+              key={`video-${video.videoId || index}`}
+              ref={index === displayedVideos.length - 1 ? lastVideoElementRef : undefined}
+              className="border p-4 rounded cursor-pointer hover:border-blue-500 transition-colors"
               onClick={() => onSelectVideo(video)}
             >
-              <div className="relative h-40 bg-gray-100">
+              <div className="relative h-40 bg-gray-100 rounded overflow-hidden">
                 {video.thumbnailUrl ? (
                   <div className="h-full w-full relative">
-                    <img 
-                      src={`/api/image-proxy?path=${encodeURIComponent(
-                        video.thumbnailUrl.replace('https://sagafit.blob.core.windows.net/sagathumbnails/', '')
-                      )}`} 
-                      alt={video.name || `Video thumbnail ${index + 1}`}
-                      className="absolute inset-0 w-full h-full object-cover"
+                    <Image
+                      src={getThumbnailProxyUrl(video.thumbnailUrl)}
+                      alt={formatVideoName(video)}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
                     />
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-full">
-                    <span>No thumbnail</span>
+                    <span className="text-gray-400">No thumbnail</span>
                   </div>
                 )}
               </div>
               <div className="mt-2">
-                <h3 className="font-medium">{video.name || video.videoId}</h3>
-                <p className="text-sm text-gray-600">{video.bodyPart}</p>
+                <h3 className="font-medium truncate">{formatVideoName(video)}</h3>
+                <p className="text-sm text-gray-600 truncate">{video.activity}</p>
+                <p className="text-xs text-gray-500 truncate">{video.bodyPart}</p>
               </div>
             </div>
           ))}
+        </div>
+      )}
+      
+      {/* Loading indicator */}
+      {loading && (
+        <div className="flex justify-center p-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
         </div>
       )}
     </div>

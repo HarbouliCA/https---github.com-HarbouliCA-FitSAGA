@@ -15,45 +15,46 @@ export default async function handler(req, res) {
     
     if (hasSasToken) {
       // If path already has SAS token, use it directly
-      // We don't need the Azure BlobClient in this case
-      url = `https://sagafit.blob.core.windows.net/sagathumbnails/${path}`;
+      const [basePath, sasToken] = path.split('?');
+      url = `https://${process.env.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/sagathumbnails/${basePath}?${sasToken}`;
       console.log('Using direct URL with existing SAS token');
     } else {
-      // Connect to Azure using environment variables
-      const connectionString = process.env.local.AZURE_STORAGE_CONNECTION_STRING;
-      const containerName = 'sagathumbnails';
-      
-      // Initialize the BlobServiceClient
-      const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
-      const containerClient = blobServiceClient.getContainerClient(containerName);
-      
-      // Encode the path only once
-      const encodedPath = encodeURIComponent(path);
-      const blobClient = containerClient.getBlobClient(encodedPath);
-      
-      // Append SAS token to the URL
-      const sasToken = process.env.local.AZURE_SAS_TOKEN;
-      url = `${blobClient.url}?${sasToken}`;
+      // Use the latest SAS token from environment variables
+      const sasToken = process.env.AZURE_SAS_TOKEN;
+      if (!sasToken) {
+        throw new Error('Azure SAS token is not configured');
+      }
+
+      // Construct the URL with the new SAS token
+      url = `https://${process.env.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/sagathumbnails/${path}?${sasToken}`;
     }
     
-    console.log('Full URL:', url);
+    console.log('Accessing URL:', url);
     
     // Fetch the blob using the URL
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'image/*'
+      }
+    });
+    
     if (!response.ok) {
       console.error('Failed to fetch blob:', response.status, response.statusText);
-      throw new Error('Failed to fetch blob');
+      throw new Error(`Failed to fetch blob: ${response.status} ${response.statusText}`);
     }
     
-    const contentType = response.headers.get('Content-Type');
+    const contentType = response.headers.get('Content-Type') || 'image/png';
+    const arrayBuffer = await response.arrayBuffer();
+    
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
     
-    response.body.pipe(res);
+    // Send the buffer as the response
+    res.send(Buffer.from(arrayBuffer));
     
   } catch (error) {
     console.error('Error proxying image:', error);
-    res.status(500).json({ error: 'Failed to retrieve image' });
+    res.status(500).json({ error: error.message || 'Failed to retrieve image' });
   }
 }
 
