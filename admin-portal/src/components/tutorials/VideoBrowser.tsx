@@ -146,12 +146,8 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
       
       const path = decodeURIComponent(match[1]); // First decode in case it's already encoded
       
-      // Use the latest SAS token from the original URL if it exists
-      if (sasToken && sasToken.includes('sv=2024-11-04')) {
-        return `/api/image-proxy?path=${encodeURIComponent(path)}?${sasToken}`;
-      }
-      
-      // Otherwise just pass the path and let the proxy use the latest token
+      // Always use the proxy endpoint without passing the SAS token
+      // The proxy will handle the SAS token from environment variables
       return `/api/image-proxy?path=${encodeURIComponent(path)}`;
     } catch (error) {
       console.error('Error processing thumbnail URL:', error);

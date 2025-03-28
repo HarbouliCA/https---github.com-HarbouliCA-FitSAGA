@@ -8,9 +8,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    const accountName = process.env.local.AZURE_STORAGE_ACCOUNT_NAME;
-    const accountKey = process.env.local.AZURE_STORAGE_ACCOUNT_KEY;
-    const containerName = 'sagathumbnails';
+    const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME;
+    const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY;
+    const containerName = process.env.AZURE_STORAGE_CONTAINER_NAME;
+    
+    if (!accountName || !accountKey || !containerName) {
+      throw new Error('Azure Storage credentials are not properly configured');
+    }
     
     // Create shared key credential
     const sharedKeyCredential = new StorageSharedKeyCredential(

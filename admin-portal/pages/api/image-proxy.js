@@ -58,17 +58,21 @@ export default async function handler(req, res) {
   }
 }
 
+// Helper function to generate thumbnail URL using environment variables
 function getVideoThumbnailUrl(videoId, videoName) {
   // Extract the user ID and folder from the video path if needed
   const userId = videoId.split('_')[0]; // Assuming ID format like 10011090_18687781
   const folder = "día 1"; // You might need to determine this dynamically
   
-  // Construct the thumbnail URL with SAS token
-  const sasToken = "sv=2024-11-04&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2026-03-28T00:57:42Z&st=2025-03-27T16:57:42Z&spr=https&sig=1JGypgmG5KAhlZkzw1IpNlzNSf30ysb4PA3PJYh4bAo%3D";
+  // Get SAS token from environment variables
+  const sasToken = process.env.AZURE_SAS_TOKEN;
+  if (!sasToken) {
+    throw new Error('Azure SAS token is not configured');
+  }
   
   // You might need to determine the thumbnail filename based on the video name
   // This example assumes thumbnails are PNG with same base name as video
   const thumbnailFilename = videoName.replace('.mp4', '.png');
   
-  return `https://sagafit.blob.core.windows.net/sagathumbnails/${userId}/${encodeURIComponent(folder)}/images/${thumbnailFilename}?${sasToken}`;
+  return `https://${process.env.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net/sagathumbnails/${userId}/${encodeURIComponent(folder)}/images/${thumbnailFilename}?${sasToken}`;
 } 
