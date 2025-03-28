@@ -1,6 +1,18 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'sagafit.blob.core.windows.net',
+        pathname: '**',
+      },
+      // Add your other patterns here
+    ],
+    // Add this to disable image optimization for Azure Blob Storage
+    unoptimized: true,
+  },
   webpack: (config, { isServer }) => {
     // Only apply these polyfills on the client side
     if (!isServer) {
