@@ -1,35 +1,27 @@
-import { BlobServiceClient, StorageSharedKeyCredential, BlobSASPermissions } from '@azure/storage-blob';
+import { BlobServiceClient } from '@azure/storage-blob';
 
 class AzureStorageService {
-  private blobServiceClient: BlobServiceClient;
   private containerName: string = 'sagafitvideos';
+  private accountName: string;
+  private sasToken: string;
 
   constructor() {
-    const accountName = process.env.NEXT_PUBLIC_AZURE_STORAGE_ACCOUNT_NAME || '';
-    const accountKey = process.env.NEXT_PUBLIC_AZURE_STORAGE_ACCOUNT_KEY || '';
-    
-    const sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
-    this.blobServiceClient = new BlobServiceClient(
-      `https://${accountName}.blob.core.windows.net`,
-      sharedKeyCredential
-    );
+    this.accountName = process.env.NEXT_PUBLIC_AZURE_STORAGE_ACCOUNT_NAME || '';
+    this.sasToken = process.env.NEXT_PUBLIC_AZURE_STORAGE_SAS_TOKEN || '';
+  }
+
+  // Helper to create full URL with SAS token
+  private getFullUrl(path: string): string {
+    return `https://${this.accountName}.blob.core.windows.net/${this.containerName}/${path}?${this.sasToken}`;
   }
 
   async getVideoUrl(videoId: string): Promise<string> {
     try {
-      const containerClient = this.blobServiceClient.getContainerClient(this.containerName);
-      const blobClient = containerClient.getBlobClient(videoId);
-      
-      const permissions = new BlobSASPermissions();
-      permissions.read = true;
-      
-      // Generate a SAS token that expires in 1 hour
-      const sasUrl = await blobClient.generateSasUrl({
-        permissions: permissions,
-        expiresOn: new Date(new Date().valueOf() + 3600 * 1000),
-      });
-      
-      return sasUrl;
+      if (!this.accountName || !this.sasToken) {
+        throw new Error("Azure Storage credentials are not configured");
+      }
+
+      return this.getFullUrl(videoId);
     } catch (error) {
       console.error('Error getting video URL:', error);
       throw new Error('Failed to get video URL');
@@ -38,22 +30,32 @@ class AzureStorageService {
 
   async getThumbnailUrl(thumbnailId: string): Promise<string> {
     try {
-      const containerClient = this.blobServiceClient.getContainerClient(this.containerName);
-      const blobClient = containerClient.getBlobClient(`thumbnails/${thumbnailId}`);
-      
-      const permissions = new BlobSASPermissions();
-      permissions.read = true;
-      
-      // Generate a SAS token that expires in 1 hour
-      const sasUrl = await blobClient.generateSasUrl({
-        permissions: permissions,
-        expiresOn: new Date(new Date().valueOf() + 3600 * 1000),
-      });
-      
-      return sasUrl;
+      if (!this.accountName || !this.sasToken) {
+        throw new Error("Azure Storage credentials are not configured");
+      }
+
+      return this.getFullUrl(`thumbnails/${thumbnailId}`);
     } catch (error) {
       console.error('Error getting thumbnail URL:', error);
       throw new Error('Failed to get thumbnail URL');
+    }
+  }
+
+  // Use this method to get proxy URLs for thumbnails
+  async getThumbnailProxyUrl(thumbnailId: string): Promise<string> {
+    try {
+      if (!thumbnailId) {
+        return '';
+      }
+
+      const path = thumbnailId.startsWith('thumbnails/') ? 
+        thumbnailId : `thumbnails/${thumbnailId}`;
+
+      // Use our image proxy API instead of direct Azure URL
+      return `/api/image-proxy?path=${encodeURIComponent(path)}`;
+    } catch (error) {
+      console.error('Error getting thumbnail proxy URL:', error);
+      return '';
     }
   }
 }

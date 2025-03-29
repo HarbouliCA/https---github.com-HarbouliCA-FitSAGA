@@ -45,7 +45,7 @@ export default function TutorialForm({ tutorial, authorId, authorName }: Tutoria
   };
 
   const handleRemoveDay = (index: number) => {
-    if (confirm('Are you sure you want to remove this day and all its exercises?')) {
+    if (window.confirm('Are you sure you want to remove this day and all its exercises?')) {
       const updatedDays = days.filter((_, i) => i !== index).map((day, i) => ({
         ...day,
         dayNumber: i + 1
@@ -78,15 +78,64 @@ export default function TutorialForm({ tutorial, authorId, authorName }: Tutoria
         throw new Error(`Day ${emptyDayIndex + 1} has no exercises`);
       }
       
-      const tutorialData: Omit<Tutorial, 'id' | 'createdAt' | 'updatedAt'> = {
+      // Helper function to recursively remove undefined values
+      const removeUndefined = (obj: any): any => {
+        // If it's not an object, return as is if not undefined
+        if (obj === undefined) return null;
+        if (obj === null) return null;
+        if (typeof obj !== 'object') return obj;
+        
+        // If it's an array, filter out undefined values and apply recursively
+        if (Array.isArray(obj)) {
+          return obj.map(item => removeUndefined(item));
+        }
+        
+        // If it's an object, remove undefined properties and apply recursively
+        const result: any = {};
+        Object.keys(obj).forEach(key => {
+          const value = removeUndefined(obj[key]);
+          if (value !== undefined) {
+            result[key] = value;
+          }
+        });
+        return result;
+      };
+      
+      // Sanitize data to remove any undefined values
+      const sanitizeDays = days.map(day => ({
+        // Only include id if it exists
+        ...(day.id ? { id: day.id } : {}),
+        dayNumber: day.dayNumber || 0,
+        title: day.title || '',
+        description: day.description || '',
+        exercises: day.exercises.map(exercise => ({
+          // Only include id if it exists
+          ...(exercise.id ? { id: exercise.id } : {}),
+          videoId: exercise.videoId || '',
+          name: exercise.name || '',
+          activity: exercise.activity || '',
+          type: exercise.type || '',
+          bodyPart: exercise.bodyPart || 'Unknown',
+          repetitions: exercise.repetitions || 1,
+          sets: exercise.sets || 1,
+          restTimeBetweenSets: exercise.restTimeBetweenSets || 0,
+          restTimeAfterExercise: exercise.restTimeAfterExercise || 0,
+          thumbnailUrl: exercise.thumbnailUrl || ''
+        }))
+      }));
+      
+      let tutorialData: any = {
         title,
-        description,
+        description: description || '',
         category,
         difficulty,
-        authorId,
-        authorName,
-        days
+        authorId: authorId || '',
+        authorName: authorName || '',
+        days: sanitizeDays
       };
+      
+      // Final recursive clean to remove any nested undefined values
+      tutorialData = removeUndefined(tutorialData);
       
       if (tutorial?.id) {
         await tutorialService.updateTutorial(tutorial.id, tutorialData);

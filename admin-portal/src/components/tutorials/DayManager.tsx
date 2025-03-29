@@ -16,6 +16,41 @@ export default function DayManager({ day, onUpdate }: DayManagerProps) {
   const [dayTitle, setDayTitle] = useState(day.title);
   const [dayDescription, setDayDescription] = useState(day.description);
 
+  // Function to convert Azure thumbnail URLs to our proxy URLs
+  const getThumbnailProxyUrl = (thumbnailUrl: string) => {
+    if (!thumbnailUrl) return '';
+    
+    try {
+      // Extract the base path without the SAS token
+      const [basePath] = thumbnailUrl.split('?');
+      
+      // First decode the URL in case it's already encoded
+      const decodedPath = decodeURIComponent(basePath);
+      
+      // Try to extract the path after the container name
+      const blobMatch = decodedPath.match(/\/\/[^\/]+\.blob\.core\.windows\.net\/[^\/]+\/(.+)$/);
+      if (blobMatch) {
+        const exactPath = blobMatch[1];
+        return `/api/image-proxy?path=${encodeURIComponent(exactPath)}`;
+      }
+      
+      // For other URLs, use the previous approach
+      const containerMatch = decodedPath.match(/(?:sagathumbnails\/|images\/|thumbnails\/)(.+)$/i);
+      if (!containerMatch) {
+        // If no container pattern found, use the full path
+        return `/api/image-proxy?path=${encodeURIComponent(decodedPath)}`;
+      }
+      
+      const path = containerMatch[1];
+      
+      // Return the proxy URL with the encoded path
+      return `/api/image-proxy?path=${encodeURIComponent(path)}`;
+    } catch (error) {
+      console.error('Error processing thumbnail URL:', error);
+      return '';
+    }
+  };
+
   const handleAddExercise = (exercise: Exercise) => {
     const updatedDay = {
       ...day,
@@ -39,7 +74,8 @@ export default function DayManager({ day, onUpdate }: DayManagerProps) {
   };
 
   const handleRemoveExercise = (index: number) => {
-    if (confirm('Are you sure you want to remove this exercise?')) {
+    // Use window.confirm to ensure the confirm dialog works properly
+    if (window.confirm('Are you sure you want to remove this exercise?')) {
       const updatedExercises = day.exercises.filter((_, i) => i !== index);
       
       const updatedDay = {
@@ -156,7 +192,12 @@ export default function DayManager({ day, onUpdate }: DayManagerProps) {
           </div>
         ) : (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId="exercises">
+            <Droppable 
+              droppableId="exercises" 
+              isDropDisabled={false}
+              isCombineEnabled={false}
+              ignoreContainerClipping={false}
+            >
               {(provided: DroppableProvided) => (
                 <div
                   {...provided.droppableProps}
@@ -178,7 +219,7 @@ export default function DayManager({ day, onUpdate }: DayManagerProps) {
                               {exercise.thumbnailUrl && (
                                 <div className="w-12 h-12 relative bg-gray-200 rounded">
                                   <img
-                                    src={exercise.thumbnailUrl}
+                                    src={getThumbnailProxyUrl(exercise.thumbnailUrl)}
                                     alt={exercise.name}
                                     className="object-cover w-full h-full rounded"
                                   />

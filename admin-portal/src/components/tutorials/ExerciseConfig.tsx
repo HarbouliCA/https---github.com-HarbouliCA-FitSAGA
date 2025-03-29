@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Exercise, VideoMetadata } from '@/interfaces/tutorial';
 import VideoBrowser from './VideoBrowser';
+import Image from 'next/image';
 
 interface ExerciseConfigProps {
   exercise?: Exercise;
@@ -25,7 +26,8 @@ export default function ExerciseConfig({ exercise, onSave, onCancel }: ExerciseC
         name: exercise.name,
         activity: exercise.activity,
         type: exercise.type,
-        bodyPart: exercise.bodyPart,
+        bodyPart: exercise.bodyPart || '',
+        bodypart: undefined,
         thumbnailUrl: exercise.thumbnailUrl || '',
         filename: ''
       });
@@ -35,6 +37,42 @@ export default function ExerciseConfig({ exercise, onSave, onCancel }: ExerciseC
   const handleSelectVideo = (video: VideoMetadata) => {
     setSelectedVideo(video);
     setShowVideoBrowser(false);
+  };
+
+  // Function to convert Azure thumbnail URLs to our proxy URLs
+  const getThumbnailProxyUrl = (thumbnailUrl: string) => {
+    if (!thumbnailUrl) return '';
+    
+    try {
+      // Extract the base path without the SAS token
+      const [basePath] = thumbnailUrl.split('?');
+      
+      // First decode the URL in case it's already encoded
+      const decodedPath = decodeURIComponent(basePath);
+      
+      // Try to extract the path after the container name
+      // For URLs like: https://sagafit.blob.core.windows.net/sagathumbnails/10031897/ día 1/images/3177842281.png
+      const blobMatch = decodedPath.match(/\/\/[^\/]+\.blob\.core\.windows\.net\/[^\/]+\/(.+)$/);
+      if (blobMatch) {
+        const exactPath = blobMatch[1];
+        return `/api/image-proxy?path=${encodeURIComponent(exactPath)}`;
+      }
+      
+      // For other URLs, use the previous approach
+      const containerMatch = decodedPath.match(/(?:sagathumbnails\/|images\/|thumbnails\/)(.+)$/i);
+      if (!containerMatch) {
+        // If no container pattern found, use the full path
+        return `/api/image-proxy?path=${encodeURIComponent(decodedPath)}`;
+      }
+      
+      const path = containerMatch[1];
+      
+      // Return the proxy URL with the encoded path
+      return `/api/image-proxy?path=${encodeURIComponent(path)}`;
+    } catch (error) {
+      console.error('Error processing thumbnail URL:', error);
+      return '';
+    }
   };
 
   const handleSave = () => {
@@ -49,7 +87,7 @@ export default function ExerciseConfig({ exercise, onSave, onCancel }: ExerciseC
       name: selectedVideo.name,
       activity: selectedVideo.activity,
       type: selectedVideo.type,
-      bodyPart: selectedVideo.bodyPart,
+      bodyPart: selectedVideo.bodyPart || selectedVideo.bodypart || 'Unknown',
       repetitions,
       sets,
       restTimeBetweenSets: restBetweenSets,
@@ -87,7 +125,7 @@ export default function ExerciseConfig({ exercise, onSave, onCancel }: ExerciseC
                 {selectedVideo.thumbnailUrl && (
                   <div className="w-24 h-24 relative bg-gray-100 rounded">
                     <img
-                      src={selectedVideo.thumbnailUrl}
+                      src={getThumbnailProxyUrl(selectedVideo.thumbnailUrl)}
                       alt={selectedVideo.name}
                       className="object-cover w-full h-full rounded"
                     />
@@ -100,7 +138,7 @@ export default function ExerciseConfig({ exercise, onSave, onCancel }: ExerciseC
                     <div className="flex space-x-2 mt-1">
                       <span>{selectedVideo.type}</span>
                       <span>•</span>
-                      <span>{selectedVideo.bodyPart}</span>
+                      <span>{selectedVideo.bodyPart || selectedVideo.bodypart}</span>
                     </div>
                   </div>
                 </div>
