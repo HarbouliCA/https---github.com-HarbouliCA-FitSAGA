@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { VideoMetadata } from '@/interfaces/tutorial';
 import metadataService from '@/services/metadataService';
-import azureStorageService from '@/services/azureStorageService';
 import Image from 'next/image';
 
 interface VideoBrowserProps {
@@ -61,18 +60,68 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
     return name;
   };
 
+  // Remove duplicate videos based on activity
+  const removeDuplicateVideos = (videos: VideoMetadata[]): VideoMetadata[] => {
+    const uniqueActivities = new Map<string, VideoMetadata>();
+    
+    videos.forEach(video => {
+      if (!uniqueActivities.has(video.activity)) {
+        uniqueActivities.set(video.activity, video);
+      }
+    });
+    
+    return Array.from(uniqueActivities.values());
+  };
+
+  // Extract all body parts from comma-separated string
+  const extractBodyParts = (videos: VideoMetadata[]): string[] => {
+    const bodyPartsSet = new Set<string>();
+    
+    videos.forEach(video => {
+      // Check both bodyPart and bodypart fields
+      const bodyPartData = video.bodypart || video.bodyPart || video.description || video.type || video.activity || '';
+      
+      if (bodyPartData) {
+        // Split by both comma and semicolon
+        const parts: string[] = bodyPartData
+          .split(/[,;]/)
+          .map((part: string) => part.trim())
+          .filter(part => part && part.toLowerCase() !== 'unknown');
+        
+        parts.forEach((part: string) => {
+          if (part) {
+            bodyPartsSet.add(part);
+          }
+        });
+      }
+    });
+    
+    const sortedParts = Array.from(bodyPartsSet).sort();
+    console.log('Final body parts:', sortedParts);
+    return sortedParts;
+  };
+
   useEffect(() => {
     const fetchVideos = async () => {
       try {
         setLoading(true);
         const allMetadata = await metadataService.getAllMetadata();
-        setVideos(allMetadata);
-        setFilteredVideos(allMetadata);
+        
+        // Log the first few videos to see their structure
+        if (allMetadata.length > 0) {
+          console.log('Sample video metadata:', JSON.stringify(allMetadata[0]), allMetadata[0]);
+          console.log('bodypart field:', allMetadata[0].bodypart);
+          console.log('bodyPart field:', allMetadata[0].bodyPart);
+        }
+        
+        const uniqueVideos = removeDuplicateVideos(allMetadata);
+        setVideos(uniqueVideos);
+        setFilteredVideos(uniqueVideos);
         
         // Extract unique filter options
-        const uniqueActivities = [...new Set(allMetadata.map(video => video.activity))].filter(Boolean);
-        const uniqueTypes = [...new Set(allMetadata.map(video => video.type))].filter(Boolean);
-        const uniqueBodyParts = [...new Set(allMetadata.map(video => video.bodyPart))].filter(Boolean);
+        const uniqueActivities = [...new Set(uniqueVideos.map(video => video.activity))].filter(Boolean);
+        const uniqueTypes = [...new Set(uniqueVideos.map(video => video.type))].filter(Boolean);
+        const uniqueBodyParts = extractBodyParts(uniqueVideos);
         
         setActivities(uniqueActivities);
         setTypes(uniqueTypes);
@@ -101,7 +150,16 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
     }
     
     if (bodyPartFilter) {
-      result = result.filter(video => video.bodyPart === bodyPartFilter);
+      result = result.filter(video => {
+        const bodyPartData = video.bodypart || video.bodyPart || video.description || video.type || '';
+        if (!bodyPartData) return false;
+        
+        const videoParts = bodyPartData
+          .split(/[,;]/)
+          .map(part => part.trim());
+          
+        return videoParts.includes(bodyPartFilter);
+      });
     }
     
     if (searchQuery) {
@@ -110,7 +168,7 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
         (video.name?.toLowerCase().includes(query) || '') ||
         (video.activity?.toLowerCase().includes(query) || '') ||
         (video.type?.toLowerCase().includes(query) || '') ||
-        (video.bodyPart?.toLowerCase().includes(query) || '')
+        ((video.bodypart || video.bodyPart || video.description)?.toLowerCase().includes(query) || '')
       );
     }
     
@@ -139,15 +197,33 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
     if (!thumbnailUrl) return '';
     
     try {
-      // Extract the base path and SAS token
-      const [basePath, sasToken] = thumbnailUrl.split('?');
-      const match = basePath.match(/sagathumbnails\/(.+)$/);
-      if (!match) return '';
+      // Extract the base path without the SAS token
+      const [basePath] = thumbnailUrl.split('?');
       
-      const path = decodeURIComponent(match[1]); // First decode in case it's already encoded
+      // First decode the URL in case it's already encoded
+      const decodedPath = decodeURIComponent(basePath);
       
-      // Always use the proxy endpoint without passing the SAS token
-      // The proxy will handle the SAS token from environment variables
+      // Try to extract the path after the container name
+      // For URLs like: https://sagafit.blob.core.windows.net/sagathumbnails/10031897/ día 1/images/3177842281.png
+      const blobMatch = decodedPath.match(/\/\/[^\/]+\.blob\.core\.windows\.net\/[^\/]+\/(.+)$/);
+      if (blobMatch) {
+        const exactPath = blobMatch[1];
+        console.log('Extracted exact blob path:', exactPath);
+        return `/api/image-proxy?path=${encodeURIComponent(exactPath)}`;
+      }
+      
+      // For other URLs, use the previous approach
+      const containerMatch = decodedPath.match(/(?:sagathumbnails\/|images\/|thumbnails\/)(.+)$/i);
+      if (!containerMatch) {
+        // If no container pattern found, use the full path
+        console.log('Using full path:', decodedPath);
+        return `/api/image-proxy?path=${encodeURIComponent(decodedPath)}`;
+      }
+      
+      const path = containerMatch[1];
+      console.log('Extracted container path:', path);
+      
+      // Return the proxy URL with the encoded path
       return `/api/image-proxy?path=${encodeURIComponent(path)}`;
     } catch (error) {
       console.error('Error processing thumbnail URL:', error);
@@ -210,11 +286,22 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
               className="p-2 border rounded w-full"
             >
               <option value="">All Body Parts</option>
-              {bodyParts.map((bodyPart, index) => (
-                <option key={`bodyPart-${index}-${bodyPart}`} value={bodyPart}>
-                  {bodyPart}
-                </option>
-              ))}
+              {bodyParts.length > 0 ? (
+                bodyParts.map((bodyPart) => (
+                  <option key={bodyPart} value={bodyPart}>
+                    {bodyPart}
+                  </option>
+                ))
+              ) : (
+                // Fallback options if no body parts were found
+                <>
+                  <option value="Pecho">Pecho</option>
+                  <option value="Espalda">Espalda</option>
+                  <option value="Piernas">Piernas</option>
+                  <option value="Hombros">Hombros</option>
+                  <option value="Brazos">Brazos</option>
+                </>
+              )}
             </select>
           </div>
         </div>
@@ -266,7 +353,7 @@ export default function VideoBrowser({ onSelectVideo }: VideoBrowserProps) {
               <div className="mt-2">
                 <h3 className="font-medium truncate">{formatVideoName(video)}</h3>
                 <p className="text-sm text-gray-600 truncate">{video.activity}</p>
-                <p className="text-xs text-gray-500 truncate">{video.bodyPart}</p>
+                <p className="text-xs text-gray-500 truncate">{video.bodypart || video.bodyPart}</p>
               </div>
             </div>
           ))}

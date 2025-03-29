@@ -39,6 +39,12 @@ export interface VideoMetadata {
   name: string;
   activity: string;
   type: string;
-  bodyPart: string;
+  bodyPart?: string;    // Capital P version for TypeScript consistency
+  bodypart?: string;    // Lowercase p version to match Firebase data
+  description?: string;
   thumbnailUrl: string;
+  thumbnailId?: string;
+  dayId?: string;
+  dayName?: string;
+  planId?: string;
 } 
