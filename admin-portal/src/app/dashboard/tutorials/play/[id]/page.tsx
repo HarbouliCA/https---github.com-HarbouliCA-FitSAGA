@@ -6,7 +6,6 @@ import { useParams, redirect } from 'next/navigation';
 import tutorialService from '@/services/tutorialService';
 import { Tutorial, Exercise } from '@/interfaces/tutorial';
 import TutorialProgress from '@/components/tutorials/TutorialProgress';
-import ExerciseTimer from '@/components/tutorials/ExerciseTimer';
 import VideoPlayer from '@/components/tutorials/VideoPlayer';
 import CompletionCelebration from '@/components/tutorials/CompletionCelebration';
 import Link from 'next/link';
@@ -23,6 +22,11 @@ export default function PlayTutorialPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showCompletion, setShowCompletion] = useState(false);
+  
+  // Workout state for UI display
+  const [currentSet, setCurrentSet] = useState(1);
+  const [currentRep, setCurrentRep] = useState(1);
+  const [isResting, setIsResting] = useState(false);
   
   useEffect(() => {
     if (status === 'loading') return;
@@ -100,6 +104,37 @@ export default function PlayTutorialPage() {
     }
   };
   
+  // Handle workout controls
+  const startWorkout = () => {
+    setIsPlaying(true);
+    setIsPaused(false);
+    // Reset state
+    setCurrentSet(1);
+    setCurrentRep(1);
+  };
+  
+  const stopWorkout = () => {
+    setIsPlaying(false);
+    setIsPaused(false);
+  };
+  
+  const togglePause = () => {
+    setIsPaused(!isPaused);
+  };
+  
+  // Update UI from VideoPlayer
+  const handleSetChange = (set: number) => {
+    setCurrentSet(set);
+  };
+  
+  const handleRepChange = (rep: number) => {
+    setCurrentRep(rep);
+  };
+  
+  const handleRestingChange = (resting: boolean) => {
+    setIsResting(resting);
+  };
+  
   if (isLoading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -162,7 +197,7 @@ export default function PlayTutorialPage() {
               
               <div className="flex justify-between mb-6">
                 <button
-                  onClick={() => setIsPlaying(!isPlaying)}
+                  onClick={isPlaying ? stopWorkout : startWorkout}
                   className={`px-4 py-2 rounded-md ${
                     isPlaying ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-500 text-white hover:bg-blue-600'
                   }`}
@@ -172,7 +207,7 @@ export default function PlayTutorialPage() {
                 
                 {isPlaying && (
                   <button
-                    onClick={() => setIsPaused(!isPaused)}
+                    onClick={togglePause}
                     className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
                   >
                     {isPaused ? 'Resume' : 'Pause'}
@@ -181,12 +216,26 @@ export default function PlayTutorialPage() {
               </div>
               
               {isPlaying && (
-                <ExerciseTimer
-                  exercise={currentExercise}
-                  onComplete={handleExerciseComplete}
-                  isActive={isPlaying}
-                  isPaused={isPaused}
-                />
+                <div className="mb-4">
+                  <div className="px-2 py-1 bg-blue-100 text-blue-800 rounded-md text-sm inline-block mb-3">
+                    {isResting ? 'Resting' : 'Active'}
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-gray-50 p-3 rounded-md text-center">
+                      <div className="text-sm text-gray-500">Set</div>
+                      <div className="text-xl font-bold">{currentSet} / {currentExercise.sets}</div>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-md text-center">
+                      <div className="text-sm text-gray-500">Rep</div>
+                      <div className="text-xl font-bold">{currentRep} / {currentExercise.repetitions}</div>
+                    </div>
+                  </div>
+                  
+                  <div className="text-sm text-gray-500 mt-3 text-center">
+                    {isResting ? 'Rest between sets' : 'Complete the current rep'}
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -198,6 +247,15 @@ export default function PlayTutorialPage() {
               <VideoPlayer
                 exercise={currentExercise}
                 autoplay={isPlaying && !isPaused}
+                onComplete={handleExerciseComplete}
+                externalWorkoutActive={isPlaying}
+                externalStartWorkout={startWorkout}
+                externalStopWorkout={stopWorkout}
+                externalPauseWorkout={() => setIsPaused(true)}
+                externalResumeWorkout={() => setIsPaused(false)}
+                onSetChange={handleSetChange}
+                onRepChange={handleRepChange}
+                onRestingChange={handleRestingChange}
               />
               
               <div className="p-6">

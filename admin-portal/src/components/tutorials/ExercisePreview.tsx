@@ -21,20 +21,32 @@ export default function ExercisePreview({ exercise }: ExercisePreviewProps) {
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200">
       {isPlaying ? (
-        <VideoPlayer 
-          exercise={exercise} 
-          onComplete={() => setIsPlaying(false)}
-          autoplay={true}
-        />
+        <div className="max-h-[240px] overflow-hidden">
+          <VideoPlayer 
+            exercise={exercise} 
+            onComplete={() => setIsPlaying(false)}
+            autoplay={true}
+            compactMode={true}
+          />
+        </div>
       ) : (
         <div className="relative">
-          <div className="aspect-video bg-gray-100 relative">
+          <div className="aspect-video max-h-[240px] bg-gray-100 relative">
             {exercise.thumbnailUrl ? (
               <Image
                 src={exercise.thumbnailUrl}
                 alt={exercise.name}
                 fill
                 className="object-cover"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                loading="lazy"
+                onError={(e) => {
+                  // Fallback to proxy URL if direct URL fails
+                  const imgElement = e.currentTarget;
+                  if (!imgElement.src.includes('/api/image-proxy')) {
+                    imgElement.src = `/api/image-proxy?path=thumbnails/${exercise.videoId.split('.')[0]}.jpg`;
+                  }
+                }}
               />
             ) : (
               <div className="flex items-center justify-center h-full">

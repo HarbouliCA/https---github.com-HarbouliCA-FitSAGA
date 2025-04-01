@@ -1,0 +1,176 @@
+# Video Player Workout Mode Implementation Plan
+
+## Objective
+Implement a workout mode for the VideoPlayer component that plays videos according to sets/reps structure and includes rest periods between sets and after exercises.
+
+## Current State
+- The video plays once when clicked without respecting sets/reps
+- No automated rest timers between sets or after exercises
+- Set/Rep counters exist but aren't dynamically updated during workout
+
+## Implementation Strategy
+
+### 1. Enhance VideoPlayer Component
+
+```typescript
+// Modifications to VideoPlayer.tsx
+- Add state for tracking current set and rep
+- Implement video looping based on repetitions
+- Add event handlers for video completion to track reps
+- Create rest timer implementation between sets
+- Calculate total workout duration based on video length × reps
+```
+
+### 2. Create Rest Timer Overlay
+
+```typescript
+// Add to VideoPlayer component
+- Display countdown timer during rest periods
+- Show "Rest between sets" vs "Rest after exercise" messages
+- Visual indicator of progress (circular timer)
+- Play sound when rest period ends
+```
+
+### 3. Update Progress Tracking
+
+```typescript
+// Modifications to update set/rep counters
+- Connect counter UI to actual workout progress
+- Animate transitions between reps/sets
+- Provide visual feedback for completed sets
+```
+
+### 4. Workout Flow Implementation
+
+The complete workout flow:
+1. User clicks play → Start with Set 1, Rep 1
+2. Video plays through once → Increment to Rep 2
+3. Repeat until all reps in set are completed
+4. Show rest timer for "Rest Between Sets" duration
+5. Start next set with Rep 1
+6. After final set completes, show "Rest After Exercise" timer
+7. Either proceed to next exercise or complete workout
+
+## Technical Implementation
+
+### State Variables
+```typescript
+const [currentSet, setCurrentSet] = useState(1);
+const [currentRep, setCurrentRep] = useState(1);
+const [isResting, setIsResting] = useState(false);
+const [restTimeRemaining, setRestTimeRemaining] = useState(0);
+const [workoutActive, setWorkoutActive] = useState(false);
+const [workoutComplete, setWorkoutComplete] = useState(false);
+```
+
+### Video Event Handlers
+```typescript
+const handleVideoEnd = () => {
+  if (workoutActive) {
+    if (currentRep < exercise.repetitions) {
+      // Move to next rep
+      setCurrentRep(prev => prev + 1);
+      // Restart video
+      if (videoRef.current) {
+        videoRef.current.currentTime = 0;
+        videoRef.current.play();
+      }
+    } else {
+      // Rep complete, check sets
+      if (currentSet < exercise.sets) {
+        // Start rest timer between sets
+        setIsResting(true);
+        setRestTimeRemaining(exercise.restTimeBetweenSets);
+        // Reset reps for next set
+        setCurrentRep(1);
+        setCurrentSet(prev => prev + 1);
+      } else {
+        // Workout complete
+        setIsResting(true);
+        setRestTimeRemaining(exercise.restTimeAfterExercise);
+        setWorkoutActive(false);
+        setWorkoutComplete(true);
+      }
+    }
+  }
+};
+```
+
+### Rest Timer Implementation
+```typescript
+useEffect(() => {
+  let timer: NodeJS.Timeout;
+  if (isResting && restTimeRemaining > 0) {
+    timer = setTimeout(() => {
+      setRestTimeRemaining(prev => prev - 1);
+    }, 1000);
+  } else if (isResting && restTimeRemaining === 0) {
+    setIsResting(false);
+    // Resume workout if not complete
+    if (!workoutComplete && videoRef.current) {
+      videoRef.current.currentTime = 0;
+      videoRef.current.play();
+    } else if (workoutComplete) {
+      // Call onComplete callback when workout is finished
+      if (onComplete) onComplete();
+    }
+  }
+  return () => clearTimeout(timer);
+}, [isResting, restTimeRemaining, workoutComplete, onComplete]);
+```
+
+### UI Overlay for Rest Timer
+```tsx
+{isResting && (
+  <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-white">
+    <h3 className="text-xl font-semibold mb-2">
+      {!workoutComplete ? "Rest Between Sets" : "Rest After Exercise"}
+    </h3>
+    <div className="text-4xl font-bold mb-4">{restTimeRemaining}s</div>
+    <div className="text-sm">
+      {!workoutComplete ? `Preparing for Set ${currentSet}` : "Great job!"}
+    </div>
+  </div>
+)}
+```
+
+### Workout Controls
+```tsx
+<div className="flex space-x-2 mt-2">
+  <button 
+    onClick={() => {
+      setWorkoutActive(true);
+      setCurrentSet(1);
+      setCurrentRep(1);
+      setWorkoutComplete(false);
+      if (videoRef.current) {
+        videoRef.current.currentTime = 0;
+        videoRef.current.play();
+      }
+    }}
+    className="px-4 py-2 bg-green-500 text-white rounded"
+  >
+    Start Workout
+  </button>
+  <button 
+    onClick={() => {
+      setWorkoutActive(false);
+      setIsResting(false);
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+    }}
+    className="px-4 py-2 bg-red-500 text-white rounded"
+  >
+    Stop Workout
+  </button>
+</div>
+```
+
+## Testing Plan
+
+1. **Verify rep counting**: Start workout and verify rep counter increments after each video play
+2. **Verify set counting**: Complete all reps in a set, verify rest timer appears, then verify set counter increments
+3. **Test rest timing**: Ensure rest timer accurately counts down between sets and after exercise
+4. **Test play/pause controls**: Verify workout can be paused and resumed correctly
+5. **Verify completion**: Ensure workout completes after all sets/reps and calls the onComplete callback 
