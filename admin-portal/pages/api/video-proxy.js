@@ -24,83 +24,45 @@ export default async function handler(req, res) {
     pathVariations.push(videoId);
     
     // Extract parts from the video ID for different path combinations
-    // Format might be userId_otherIds_year_cwXXX.mp4 or just year_cwXXX.mp4
     const userIdMatch = videoId.match(/^(\d+)_/);
-    const filenameMatch = videoId.match(/(\d{4}_cw\d{3}\.mp4)$/i);
-    const simplifiedFilenameMatch = videoId.match(/_(\d{4}_cw\d{3}\.mp4)$/i);
+    const filenameMatch = videoId.match(/(\d{4}_(?:cw|bc)\d{3}\.mp4)$/i);
     
-    // If we can extract a userId
-    if (userIdMatch) {
+    // If we can extract a userId and filename
+    if (userIdMatch && filenameMatch) {
       const userId = userIdMatch[1];
+      const filename = filenameMatch[1];
       
-      // Try different folder patterns with full videoId
-      pathVariations.push(`${userId}/${videoId}`);                        
-      pathVariations.push(`${userId}/día 1/${videoId}`);                  
-      pathVariations.push(`${userId}/ día 1/${videoId}`);                 
-      pathVariations.push(`${userId}/videos/${videoId}`);                 
-      pathVariations.push(`${userId}/día 1/videos/${videoId}`);
-      pathVariations.push(`${userId}/ día 1/videos/${videoId}`);
+      // Based on logs, these are the successful patterns
+      // userId/filename directly
+      pathVariations.push(`${userId}/${filename}`);
       
-      // Try with just the year_cwXXX.mp4 part if we can extract it
-      if (simplifiedFilenameMatch) {
-        const simpleFilename = simplifiedFilenameMatch[1];
-        pathVariations.push(`${userId}/${simpleFilename}`);
-        pathVariations.push(`${userId}/día 1/${simpleFilename}`);
-        pathVariations.push(`${userId}/ día 1/${simpleFilename}`);
-        pathVariations.push(`${userId}/videos/${simpleFilename}`);
-      }
+      // userId/día 1/filename - Primary path that works
+      pathVariations.push(`${userId}/día 1/${filename}`);
       
-      // If the filename matches the specific pattern from the direct URL example
-      if (filenameMatch) {
-        const exactFilename = filenameMatch[1];
-        pathVariations.push(`${userId}/${exactFilename}`);
-        pathVariations.push(`${userId}/día 1/${exactFilename}`);
-        pathVariations.push(`${userId}/ día 1/${exactFilename}`);
-        pathVariations.push(`${userId}/videos/${exactFilename}`);
-      }
+      // Add a few common variations
+      pathVariations.push(`${userId}/ día 1/${filename}`);
+      pathVariations.push(`${userId}/videos/${filename}`);
     }
-
-    // Special case - direct pattern from the example URL
-    if (videoId.includes('_')) {
-      // Extract just the last part after final underscore (e.g., 2023_cw003.mp4 from 10011090_18687781_2023_cw003.mp4)
-      const parts = videoId.split('_');
-      if (parts.length >= 2) {
-        const lastParts = parts.slice(parts.length - 2).join('_'); // Get last 2 segments with underscore
-        if (lastParts.match(/\d{4}_cw\d{3}\.mp4$/i)) {
-          // This matches the pattern like 2023_cw003.mp4
-          pathVariations.push(lastParts);
-          
-          if (userIdMatch) {
-            const userId = userIdMatch[1];
-            pathVariations.push(`${userId}/${lastParts}`);
-            pathVariations.push(`${userId}/día 1/${lastParts}`);
-            pathVariations.push(`${userId}/ día 1/${lastParts}`);
-            pathVariations.push(`${userId}/día 1/videos/${lastParts}`);
-          }
-        }
-      }
-    }
-
-    // Try "videos" folder
+    
+    // Try "videos" folder only if necessary
     pathVariations.push(`videos/${videoId}`);
     
-    // Add any custom path format based on direct URL pattern
-    if (userIdMatch && videoId.match(/\d{4}_cw\d{3}\.mp4$/i)) {
-      const userId = userIdMatch[1];
-      const filename = videoId.match(/(\d{4}_cw\d{3}\.mp4)$/i)[1];
-      pathVariations.push(`${userId}/día 1/${filename}`);
-    }
+    // Remove duplicates
+    const uniquePathVariations = [...new Set(pathVariations)];
+    console.log(`Generated ${uniquePathVariations.length} path variations to try`);
     
-    console.log('Trying path variations:', pathVariations);
-
-    // Try multiple container names if the first one fails
-    const containerNames = ['sagafitvideos', 'sagathumbnails', 'saga-videos', 'sagavideos', 'videos', 'sagafit'];
+    // Try these containers in order of likelihood
+    const containerNames = ['sagafitvideos', 'sagavideos', 'videos'];
     
     let foundVideo = false;
+    let failedContainers = [];
+    let lastError = null;
     
     // Try each container with each path variation until we find the video
     for (const container of containerNames) {
-      for (const path of pathVariations) {
+      let containerFailed = true;
+      
+      for (const path of uniquePathVariations) {
         try {
           // Properly encode the URL parts - especially for the "día" with accent
           const encodedPath = path.split('/').map(segment => 
@@ -135,44 +97,73 @@ export default async function handler(req, res) {
               res.setHeader('Content-Length', contentLength);
             }
             
+            // Set debugging headers in development
+            if (process.env.NODE_ENV === 'development') {
+              res.setHeader('X-Source-Container', container);
+              res.setHeader('X-Source-Path', path);
+            }
+            
             // Get the array buffer and send it as the response
             const arrayBuffer = await response.arrayBuffer();
             res.status(200).send(Buffer.from(arrayBuffer));
             
             foundVideo = true;
+            containerFailed = false;
             return;
           }
         } catch (error) {
-          // Continue to the next path/container
+          // Store the error to report back later
+          lastError = error.message;
           console.log(`Failed to fetch from ${container}/${path}: ${error.message}`);
         }
+      }
+      
+      if (containerFailed) {
+        failedContainers.push(container);
       }
     }
 
     if (!foundVideo) {
       console.error('Failed to fetch video from any container or path variation');
       
-      // Try direct URL construction with proper encoding - using the known working pattern
+      // Try direct URL construction with proper encoding for bcXXX as well as cwXXX patterns
       if (userIdMatch && filenameMatch) {
         try {
           const userId = userIdMatch[1];
           const filename = filenameMatch[1];
           
-          // Use the exact format from the working URL
-          const encodedPath = `${userId}/${encodeURIComponent('día 1')}/${filename}`;
-          const directUrl = `https://${accountName}.blob.core.windows.net/sagafitvideos/${encodedPath}?${sasToken}`;
+          // Try both sagafitvideos and sagavideos containers with the determined pattern
+          const containers = ['sagafitvideos', 'sagavideos', 'videos'];
           
-          console.log('Trying exact known working pattern:', directUrl);
-          
-          const response = await fetch(directUrl);
-          if (response.ok) {
-            console.log('Successfully found video using exact pattern!');
-            const contentType = response.headers.get('content-type') || 'video/mp4';
-            const arrayBuffer = await response.arrayBuffer();
-            
-            res.setHeader('Content-Type', contentType);
-            res.status(200).send(Buffer.from(arrayBuffer));
-            return;
+          for (const container of containers) {
+            // Try both día 1 and día 2, día 3 patterns
+            for (let i = 1; i <= 5; i++) {
+              // Use the exact format from the working URL
+              const encodedPath = `${userId}/${encodeURIComponent(`día ${i}`)}/${filename}`;
+              const directUrl = `https://${accountName}.blob.core.windows.net/${container}/${encodedPath}?${sasToken}`;
+              
+              console.log(`Trying direct path: ${container}/${userId}/día ${i}/${filename}`);
+              
+              try {
+                const response = await fetch(directUrl);
+                if (response.ok) {
+                  console.log(`Successfully found video using direct pattern: ${container}/${userId}/día ${i}/${filename}`);
+                  const contentType = response.headers.get('content-type') || 'video/mp4';
+                  const arrayBuffer = await response.arrayBuffer();
+                  
+                  res.setHeader('Content-Type', contentType);
+                  if (process.env.NODE_ENV === 'development') {
+                    res.setHeader('X-Source-Container', container);
+                    res.setHeader('X-Source-Path', `${userId}/día ${i}/${filename}`);
+                  }
+                  
+                  res.status(200).send(Buffer.from(arrayBuffer));
+                  return;
+                }
+              } catch (error) {
+                console.log(`Failed with direct URL attempt: ${error.message}`);
+              }
+            }
           }
         } catch (error) {
           console.error('Error with direct URL approach:', error.message);
@@ -184,8 +175,10 @@ export default async function handler(req, res) {
         error: 'Video not found',
         videoId,
         triedContainers: containerNames,
-        triedPaths: pathVariations,
-        message: 'Could not locate video in any container or path variation'
+        failedContainers,
+        triedPathCount: uniquePathVariations.length,
+        message: 'Could not locate video in any container or path variation',
+        lastError
       };
       
       console.error('Video search details:', detailedError);

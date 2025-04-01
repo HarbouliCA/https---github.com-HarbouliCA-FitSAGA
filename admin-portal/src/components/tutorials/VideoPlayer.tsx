@@ -52,6 +52,25 @@ export default function VideoPlayer({
   
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // Use a ref to track if component is mounted to prevent play() after unmount
+  const isMounted = useRef(true);
+
+  // Set isMounted on component mount
+  useEffect(() => {
+    // Ensure the ref is set to true when the component is mounted
+    isMounted.current = true;
+    
+    // Set up cleanup when component unmounts
+    return () => {
+      console.log("VideoPlayer unmounting - cleaning up");
+      isMounted.current = false;
+      // Pause video when unmounting to prevent play interruption errors
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+    };
+  }, []);
+
   // Helper to generate alternative video URLs based on the pattern from direct example
   const generateAlternativeUrls = (videoId: string) => {
     const urls: string[] = [];
@@ -149,6 +168,141 @@ export default function VideoPlayer({
     fetchVideoUrl();
   }, [exercise.videoId]);
 
+  // Make sure video exists and can be played after initialization
+  useEffect(() => {
+    if (!loading && videoUrl && videoRef.current) {
+      console.log("Video is loaded and ready to check autoplay status");
+      
+      // If we're supposed to be autoplaying, try to play the video
+      if (autoplay) {
+        // Use setTimeout to ensure DOM is fully updated
+        setTimeout(() => {
+          if (isMounted.current && videoRef.current) {
+            console.log("Attempting delayed autoplay after load");
+            safePlayVideo();
+          }
+        }, 100);
+      }
+    }
+  }, [loading, videoUrl, autoplay]);
+
+  // Handle external workout control - with improved initialization timing
+  useEffect(() => {
+    console.log("External workout active changed:", externalWorkoutActive, "current state:", workoutActive);
+    
+    if (typeof externalWorkoutActive !== 'undefined') {
+      if (externalWorkoutActive !== workoutActive) {
+        console.log(`Changing workout state from ${workoutActive} to ${externalWorkoutActive}`);
+        setWorkoutActive(externalWorkoutActive);
+        
+        if (externalWorkoutActive && !workoutActive) {
+          // External start workout command
+          console.log("Starting workout from external command");
+          setCurrentSet(1);
+          setCurrentRep(1);
+          setWorkoutComplete(false);
+          setIsResting(false);
+          setWorkoutPaused(false);
+          
+          // Only try to play if the video is ready
+          if (videoRef.current && videoUrl) {
+            console.log("Setting video to start at beginning");
+            videoRef.current.currentTime = 0;
+            // Use a small timeout to ensure state is updated before playing
+            setTimeout(() => {
+              if (isMounted.current && videoRef.current) {
+                console.log("Attempting to play video after state update");
+                safePlayVideo();
+              }
+            }, 200);
+          } else {
+            console.log("Video ref not available or videoUrl missing:", 
+              videoRef.current ? "Video element exists" : "No video element", 
+              videoUrl ? "URL exists" : "No URL");
+          }
+        } else if (!externalWorkoutActive && workoutActive) {
+          // External stop workout command
+          console.log("Stopping workout from external command");
+          if (videoRef.current) {
+            videoRef.current.pause();
+          }
+        }
+      }
+    }
+  }, [externalWorkoutActive, workoutActive, videoUrl]);
+  
+  // Handle external pause state
+  useEffect(() => {
+    // Check if external pause/resume functions exist
+    if (externalPauseWorkout !== undefined && externalResumeWorkout !== undefined) {
+      // Listen for external pause/resume commands and sync with internal state
+      const originalPauseState = workoutPaused;
+      
+      // If we have external commands, check if we need to update
+      if (videoRef.current) {
+        if (workoutPaused && !videoRef.current.paused) {
+          // We should be paused but aren't - pause the video
+          videoRef.current.pause();
+        } else if (!workoutPaused && videoRef.current.paused && workoutActive && !isResting && isMounted.current) {
+          // We should be playing but aren't
+          safePlayVideo();
+        }
+      }
+    }
+  }, [workoutPaused, isResting, workoutActive, externalPauseWorkout, externalResumeWorkout]);
+
+  // Safe play function to prevent play() calls after unmount
+  const safePlayVideo = async () => {
+    console.log("safePlayVideo called, video ref:", videoRef.current ? "exists" : "null");
+    
+    // Force isMounted to true since we're in an active component context
+    isMounted.current = true;
+    
+    if (videoRef.current) {
+      try {
+        console.log("Attempting to play video");
+        
+        // Set volume to 0 initially to help with autoplay restrictions
+        videoRef.current.volume = 0.0;
+        videoRef.current.muted = true;
+        
+        // Use await to properly catch any play() errors
+        const playPromise = videoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              console.log("Video playback started successfully");
+              // Gradually increase volume once playing successfully
+              setTimeout(() => {
+                if (videoRef.current) {
+                  videoRef.current.muted = false;
+                  // Increase volume gradually
+                  const volumeInterval = setInterval(() => {
+                    if (videoRef.current && videoRef.current.volume < 1.0) {
+                      videoRef.current.volume = Math.min(1.0, videoRef.current.volume + 0.1);
+                    } else {
+                      clearInterval(volumeInterval);
+                    }
+                  }, 200);
+                }
+              }, 1000);
+            })
+            .catch(err => {
+              console.error("Video play failed:", err.message);
+              // If autoplay is blocked, make the manual play button more prominent
+              if (err.name === "NotAllowedError") {
+                console.log("Autoplay blocked by browser. User interaction required.");
+              }
+            });
+        }
+      } catch (err) {
+        console.error('Failed to play video:', err);
+      }
+    } else {
+      console.error('Video reference not available for playback');
+    }
+  };
+
   // Notify parent of rep/set changes
   useEffect(() => {
     if (onSetChange) {
@@ -168,51 +322,61 @@ export default function VideoPlayer({
     }
   }, [isResting, onRestingChange]);
 
-  // Handle external workout control
+  // Rest timer countdown effect
   useEffect(() => {
-    if (typeof externalWorkoutActive !== 'undefined') {
-      setWorkoutActive(externalWorkoutActive);
+    let timer: NodeJS.Timeout | null = null;
+    
+    if (isResting && restTimeRemaining > 0 && !workoutPaused) {
+      // Countdown timer for rest periods
+      timer = setTimeout(() => {
+        if (isMounted.current) {
+          setRestTimeRemaining(prev => prev - 1);
+          console.log(`Rest time remaining: ${restTimeRemaining - 1}s, workoutComplete: ${workoutComplete}`);
+        }
+      }, 1000);
+    } else if (isResting && restTimeRemaining === 0 && isMounted.current) {
+      console.log("Rest period complete:", workoutComplete ? "after exercise" : "between sets");
+      setIsResting(false);
       
-      if (externalWorkoutActive && !workoutActive) {
-        // External start workout command
+      if (workoutComplete) {
+        // Exercise is complete (final rest after all sets)
+        console.log('⭐ Exercise complete with rest period finished, moving to next exercise!');
+        
+        // Reset workout states before moving to next exercise
+        setWorkoutActive(false);
+        setWorkoutPaused(false);
         setCurrentSet(1);
         setCurrentRep(1);
-        setWorkoutComplete(false);
-        setIsResting(false);
-        setWorkoutPaused(false);
         
+        if (onComplete) {
+          // Small timeout to ensure UI updates before transition
+          setTimeout(() => {
+            if (isMounted.current) {
+              console.log('⭐ Calling onComplete to move to next exercise');
+              onComplete();
+            }
+          }, 500);
+        }
+      } else if (workoutActive && !workoutPaused) {
+        // Rest between sets is complete, continue with the next set
+        console.log('Rest between sets complete, starting next set');
         if (videoRef.current) {
           videoRef.current.currentTime = 0;
-          videoRef.current.play()
-            .catch(err => console.error('Failed to autoplay video:', err));
-        }
-      } else if (!externalWorkoutActive && workoutActive) {
-        // External stop workout command
-        if (videoRef.current) {
-          videoRef.current.pause();
+          safePlayVideo();
         }
       }
     }
-  }, [externalWorkoutActive, workoutActive]);
-  
-  // Handle external pause/resume commands
-  useEffect(() => {
-    if (externalPauseWorkout && externalResumeWorkout) {
-      // Handle pause state changes
-      if (videoRef.current) {
-        if (workoutPaused) {
-          videoRef.current.pause();
-        } else if (!isResting) {
-          videoRef.current.play()
-            .catch(err => console.error('Failed to resume video:', err));
-        }
-      }
-    }
-  }, [workoutPaused, externalPauseWorkout, externalResumeWorkout, isResting]);
+    
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isResting, restTimeRemaining, workoutActive, workoutComplete, workoutPaused, onComplete]);
 
   // Handle video ending event - manage reps and sets
   const handleVideoEnd = () => {
-    console.log('Video ended, workout active:', workoutActive);
+    if (!isMounted.current) return;
+    
+    console.log('Video ended, workout active:', workoutActive, 'workout paused:', workoutPaused);
     
     if (workoutActive && !workoutPaused) {
       if (currentRep < exercise.repetitions) {
@@ -221,10 +385,9 @@ export default function VideoPlayer({
         setCurrentRep(prev => prev + 1);
         
         // Restart video
-        if (videoRef.current) {
+        if (videoRef.current && isMounted.current) {
           videoRef.current.currentTime = 0;
-          videoRef.current.play()
-            .catch(err => console.error('Failed to restart video after rep:', err));
+          safePlayVideo();
         }
       } else {
         // Set of reps complete, check if there are more sets
@@ -244,44 +407,16 @@ export default function VideoPlayer({
           console.log(`Workout complete! Final rest: ${exercise.restTimeAfterExercise}s`);
           setIsResting(true);
           setRestTimeRemaining(exercise.restTimeAfterExercise);
-          setWorkoutActive(false);
           setWorkoutComplete(true);
+          // Don't turn off workoutActive yet - wait until rest is complete
         }
       }
-    } else if (!workoutComplete && onComplete) {
+    } else if (!workoutComplete && !workoutActive && onComplete) {
       // Normal video play completed (not in workout mode)
+      console.log('Normal video play completed, calling onComplete');
       onComplete();
     }
   };
-
-  // Rest timer countdown effect
-  useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    
-    if (isResting && restTimeRemaining > 0 && !workoutPaused) {
-      timer = setTimeout(() => {
-        setRestTimeRemaining(prev => prev - 1);
-      }, 1000);
-    } else if (isResting && restTimeRemaining === 0) {
-      setIsResting(false);
-      
-      // Resume workout if not complete
-      if (workoutActive && videoRef.current && !workoutPaused) {
-        console.log('Rest complete, starting next rep/set');
-        videoRef.current.currentTime = 0;
-        videoRef.current.play()
-          .catch(err => console.error('Failed to play video after rest:', err));
-      } else if (workoutComplete) {
-        // Entire workout is finished
-        console.log('Workout and rest period complete');
-        if (onComplete) onComplete();
-      }
-    }
-    
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [isResting, restTimeRemaining, workoutActive, workoutComplete, workoutPaused, onComplete]);
 
   // Exposed workout control functions for parent components
   const startWorkout = () => {
@@ -293,10 +428,9 @@ export default function VideoPlayer({
     setWorkoutComplete(false);
     setIsResting(false);
     
-    if (videoRef.current) {
+    if (videoRef.current && isMounted.current) {
       videoRef.current.currentTime = 0;
-      videoRef.current.play()
-        .catch(err => console.error('Failed to start workout:', err));
+      safePlayVideo();
     }
     
     // Notify external caller if callback provided
@@ -339,9 +473,8 @@ export default function VideoPlayer({
     console.log('Resuming workout');
     setWorkoutPaused(false);
     
-    if (videoRef.current && workoutActive && !isResting) {
-      videoRef.current.play()
-        .catch(err => console.error('Failed to resume workout:', err));
+    if (videoRef.current && workoutActive && !isResting && isMounted.current) {
+      safePlayVideo();
     }
     
     // Notify external caller if callback provided
@@ -385,6 +518,20 @@ export default function VideoPlayer({
   const containerClasses = compactMode 
     ? "relative rounded-lg overflow-hidden max-h-[240px]" 
     : "relative rounded-lg overflow-hidden";
+
+  // Watch for autoplay prop changes to start/stop video accordingly
+  useEffect(() => {
+    console.log("Autoplay prop changed:", autoplay);
+    if (videoRef.current && isMounted.current) {
+      if (autoplay) {
+        console.log("Autoplay true - attempting to play video");
+        safePlayVideo();
+      } else {
+        console.log("Autoplay false - pausing video");
+        videoRef.current.pause();
+      }
+    }
+  }, [autoplay]);
 
   if (loading) {
     return (
@@ -459,36 +606,44 @@ export default function VideoPlayer({
               }}
             ></div>
           </div>
-          
-          {/* Pause/Resume rest timer */}
-          {workoutPaused ? (
-            <button 
-              onClick={resumeWorkout}
-              className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
-            >
-              Resume
-            </button>
-          ) : (
-            <button 
-              onClick={pauseWorkout}
-              className="mt-4 px-4 py-2 border border-gray-300 bg-white text-gray-700 rounded hover:bg-gray-100 text-sm"
-            >
-              Pause
-            </button>
-          )}
+        </div>
+      )}
+      
+      {/* Manual play button overlay - improved version with better visibility */}
+      {!isResting && (videoRef.current?.paused || !videoRef.current) && (autoplay || workoutActive) && (
+        <div 
+          onClick={() => {
+            console.log("Manual play button clicked");
+            if (videoRef.current) {
+              videoRef.current.currentTime = 0;
+              safePlayVideo();
+            }
+          }}
+          className="absolute inset-0 flex items-center justify-center bg-black/50 cursor-pointer z-50"
+        >
+          <div className="bg-blue-500 text-white p-4 rounded-full shadow-lg hover:bg-blue-600 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" viewBox="0 0 16 16">
+              <path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/>
+            </svg>
+          </div>
+          <div className="absolute bottom-8 text-white bg-black/60 px-4 py-2 rounded text-sm">
+            Click to play video
+          </div>
         </div>
       )}
       
       <video
         ref={videoRef}
-        src={videoUrl}
         className={`w-full ${compactMode ? 'max-h-[240px] object-contain' : ''}`}
         controls={!workoutActive} // Hide controls in workout mode
-        autoPlay={autoplay}
+        muted
+        playsInline
+        preload="auto"
         onEnded={handleVideoEnd}
         onError={handleVideoError}
-        playsInline
+        data-testid="workout-video"
       >
+        <source src={videoUrl || ''} type="video/mp4" />
         Your browser does not support the video tag.
       </video>
       

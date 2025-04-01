@@ -73,18 +73,57 @@ export default function PlayTutorialPage() {
   const handleExerciseComplete = () => {
     if (!tutorial) return;
     
+    console.log("⭐ Exercise complete callback received in PlayTutorialPage");
     const currentDay = tutorial.days[currentDayIndex];
+    
+    // Log the state for debugging
+    console.log(`Current Day Index: ${currentDayIndex}, Current Exercise Index: ${currentExerciseIndex}`);
+    console.log(`Days in tutorial: ${tutorial.days.length}, Exercises in current day: ${currentDay.exercises.length}`);
     
     if (currentExerciseIndex < currentDay.exercises.length - 1) {
       // Move to next exercise in current day
-      setCurrentExerciseIndex(currentExerciseIndex + 1);
+      setCurrentExerciseIndex(prevIndex => {
+        const nextIndex = prevIndex + 1;
+        console.log(`⭐ Moving from exercise ${prevIndex} to ${nextIndex} in day ${currentDayIndex}`);
+        return nextIndex;
+      });
+      
+      // Reset workout state
+      setIsPlaying(false);
+      setIsPaused(false);
+      setCurrentSet(1);
+      setCurrentRep(1);
+      setIsResting(false);
+      
+      // Log the transition
+      console.log("⭐ Reset workout state, ready for next exercise");
     } else if (currentDayIndex < tutorial.days.length - 1) {
       // Move to first exercise of next day
-      setCurrentDayIndex(currentDayIndex + 1);
+      console.log(`⭐ Current day ${currentDayIndex} completed, moving to day ${currentDayIndex + 1}`);
+      setCurrentDayIndex(prevIndex => {
+        const nextIndex = prevIndex + 1;
+        console.log(`⭐ Moving from day ${prevIndex} to ${nextIndex}`);
+        return nextIndex;
+      });
       setCurrentExerciseIndex(0);
+      
+      // Reset workout state
+      setIsPlaying(false);
+      setIsPaused(false);
+      setCurrentSet(1);
+      setCurrentRep(1);
+      setIsResting(false);
+      
+      // Log the transition
+      console.log("⭐ Reset workout state, ready for first exercise of next day");
     } else {
       // Tutorial completed
+      console.log("⭐ All exercises in all days completed! Showing completion celebration.");
       setShowCompletion(true);
+      
+      // Reset workout state
+      setIsPlaying(false);
+      setIsPaused(false);
     }
   };
   
@@ -106,20 +145,42 @@ export default function PlayTutorialPage() {
   
   // Handle workout controls
   const startWorkout = () => {
-    setIsPlaying(true);
-    setIsPaused(false);
-    // Reset state
-    setCurrentSet(1);
-    setCurrentRep(1);
+    console.log("Starting workout from UI button");
+    // Add a small delay to ensure the state changes are registered properly
+    setTimeout(() => {
+      if (!isPlaying) {
+        setIsPlaying(true);
+        setIsPaused(false);
+        // Reset state
+        setCurrentSet(1);
+        setCurrentRep(1);
+        setIsResting(false);
+        
+        // Immediately log state to verify it updated
+        console.log("Updated state - isPlaying:", true, "isPaused:", false);
+      } else {
+        console.log("Workout already playing, ignoring start command");
+      }
+    }, 0);
   };
   
   const stopWorkout = () => {
+    console.log("Stopping workout");
     setIsPlaying(false);
     setIsPaused(false);
+    setIsResting(false);
   };
   
   const togglePause = () => {
-    setIsPaused(!isPaused);
+    console.log(`${isPaused ? 'Resuming' : 'Pausing'} workout`);
+    
+    if (isPaused) {
+      // Resume the workout
+      setIsPaused(false);
+    } else {
+      // Pause the workout
+      setIsPaused(true);
+    }
   };
   
   // Update UI from VideoPlayer
@@ -197,20 +258,56 @@ export default function PlayTutorialPage() {
               
               <div className="flex justify-between mb-6">
                 <button
-                  onClick={isPlaying ? stopWorkout : startWorkout}
-                  className={`px-4 py-2 rounded-md ${
+                  onClick={() => {
+                    console.log("Start/Stop button clicked");
+                    if (isPlaying) {
+                      stopWorkout();
+                    } else {
+                      startWorkout();
+                    }
+                  }}
+                  className={`px-4 py-2 rounded-md flex items-center justify-center ${
                     isPlaying ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-blue-500 text-white hover:bg-blue-600'
                   }`}
+                  data-testid="workout-control-button"
                 >
-                  {isPlaying ? 'Stop' : 'Start'}
+                  {isPlaying ? (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="mr-1" viewBox="0 0 16 16">
+                        <path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/>
+                      </svg>
+                      Stop
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="mr-1" viewBox="0 0 16 16">
+                        <path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/>
+                      </svg>
+                      Start
+                    </>
+                  )}
                 </button>
                 
                 {isPlaying && (
                   <button
                     onClick={togglePause}
-                    className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50"
+                    className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 flex items-center"
                   >
-                    {isPaused ? 'Resume' : 'Pause'}
+                    {isPaused ? (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="mr-1" viewBox="0 0 16 16">
+                          <path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z"/>
+                        </svg>
+                        Resume
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" className="mr-1" viewBox="0 0 16 16">
+                          <path d="M5.5 3.5A1.5 1.5 0 0 1 7 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5zm5 0A1.5 1.5 0 0 1 12 5v6a1.5 1.5 0 0 1-3 0V5a1.5 1.5 0 0 1 1.5-1.5z"/>
+                        </svg>
+                        Pause
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -247,12 +344,21 @@ export default function PlayTutorialPage() {
               <VideoPlayer
                 exercise={currentExercise}
                 autoplay={isPlaying && !isPaused}
-                onComplete={handleExerciseComplete}
+                onComplete={() => {
+                  console.log("VideoPlayer signaled exercise completion");
+                  handleExerciseComplete();
+                }}
                 externalWorkoutActive={isPlaying}
                 externalStartWorkout={startWorkout}
                 externalStopWorkout={stopWorkout}
-                externalPauseWorkout={() => setIsPaused(true)}
-                externalResumeWorkout={() => setIsPaused(false)}
+                externalPauseWorkout={() => {
+                  console.log("External pause requested");
+                  setIsPaused(true);
+                }}
+                externalResumeWorkout={() => {
+                  console.log("External resume requested");
+                  setIsPaused(false);
+                }}
                 onSetChange={handleSetChange}
                 onRepChange={handleRepChange}
                 onRestingChange={handleRestingChange}

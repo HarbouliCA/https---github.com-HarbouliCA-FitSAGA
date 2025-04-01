@@ -1,177 +1,119 @@
 import { BlobServiceClient } from '@azure/storage-blob';
 
 export default async function handler(req, res) {
+  const { path } = req.query;
+  
+  if (!path) {
+    return res.status(400).json({ error: 'Missing path parameter' });
+  }
+  
   try {
-    const { path } = req.query;
-    if (!path) {
-      return res.status(400).json({ error: 'Path parameter is required' });
+    // Get Azure Storage connection details from environment variables
+    const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME || 'sagafit';
+    const accountKey = process.env.AZURE_STORAGE_ACCOUNT_KEY;
+    const sasToken = process.env.AZURE_STORAGE_SAS_TOKEN;
+    
+    if (!accountKey && !sasToken) {
+      return res.status(500).json({ error: 'Missing Azure Storage credentials' });
     }
+    
+    // Create the BlobServiceClient
+    const connectionString = accountKey 
+      ? `DefaultEndpointsProtocol=https;AccountName=${accountName};AccountKey=${accountKey};EndpointSuffix=core.windows.net`
+      : `BlobEndpoint=https://${accountName}.blob.core.windows.net;SharedAccessSignature=${sasToken}`;
+    
+    const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
+    
+    // Create path variations to try
+    const pathVariations = [];
 
-    // Get Azure credentials from environment variables
-    const accountName = process.env.AZURE_STORAGE_ACCOUNT_NAME;
-    const sasToken = process.env.AZURE_SAS_TOKEN;
-
-    if (!accountName || !sasToken) {
-      throw new Error('Azure storage configuration is incomplete');
-    }
-
-    // Log the requested path
-    console.log(`Image proxy requested path: ${path}`);
-
-    // Try different variations of the path
-    let decodedPaths = [];
-
-    // Original path decoding
-    const originalDecodedPath = path
-      .split('/')
-      .map(segment => decodeURIComponent(segment))
-      .join('/');
-    decodedPaths.push(originalDecodedPath);
-
-    // Check if this is a thumbnail identifier with format like thumbnails/12345.jpg
-    const thumbnailMatch = originalDecodedPath.match(/^thumbnails\/(.+)$/);
+    // Add the direct path requested
+    pathVariations.push(path);
+    
+    // Try to extract parts if path looks like a thumbnail ID
+    const thumbnailMatch = path.match(/thumbnails\/(\d+)_(\d+)_(\d{4}_(?:cw|bc)\d{3})/i);
     if (thumbnailMatch) {
-      const thumbnailId = thumbnailMatch[1];
-      const fileBase = thumbnailId.split('.')[0]; // Get the file base name without extension
+      const userId = thumbnailMatch[1];
+      const filename = thumbnailMatch[3];
       
-      // Try with different extensions
-      const extensions = ['.jpg', '.jpeg', '.png', '.gif'];
-      for (const ext of extensions) {
-        if (!thumbnailId.endsWith(ext)) {
-          decodedPaths.push(`thumbnails/${fileBase}${ext}`);
-        }
-      }
+      // Try different patterns for thumbnails
+      pathVariations.push(`${userId}/día 1/images/${filename}.png`);
+      pathVariations.push(`${userId}/día 1/images/${filename}.jpg`);
+      pathVariations.push(`${userId}/images/${filename}.png`);
+      pathVariations.push(`${userId}/images/${filename}.jpg`);
+    }
+    
+    // Try these containers in order of likelihood
+    const containerNames = ['sagathumbnails', 'sagafitvideos', 'sagafit-thumbnails'];
+    
+    let foundImage = false;
+    let imageData = null;
+    
+    // Try each container and path combination
+    for (const containerName of containerNames) {
+      if (foundImage) break;
       
-      // Try with userId folder structure
-      if (fileBase.match(/^\d+/)) {
-        const possibleUserId = fileBase.match(/^(\d+)/)[1];
-        decodedPaths.push(`${possibleUserId}/thumbnails/${thumbnailId}`);
-        decodedPaths.push(`${possibleUserId}/día 1/thumbnails/${thumbnailId}`);
-        decodedPaths.push(`${possibleUserId}/día 1/images/${thumbnailId}`);
-        decodedPaths.push(`${possibleUserId}/ día 1/thumbnails/${thumbnailId}`);
-        decodedPaths.push(`${possibleUserId}/ día 1/images/${thumbnailId}`);
+      const containerClient = blobServiceClient.getContainerClient(containerName);
+      
+      for (const pathVariation of pathVariations) {
+        if (foundImage) break;
         
-        // Also try with just the ID
-        decodedPaths.push(`${possibleUserId}/${thumbnailId}`);
-        decodedPaths.push(`${possibleUserId}/images/${thumbnailId}`);
-      }
-    }
-
-    // Check if path matches the pattern userId/día X/images/filename.png
-    const userIdMatch = originalDecodedPath.match(/^(\d+)\/(.+)$/);
-    if (userIdMatch) {
-      // Add version with space after user ID
-      const userId = userIdMatch[1];
-      const restOfPath = userIdMatch[2];
-      const alternativePath = `${userId}/ ${restOfPath}`;
-      decodedPaths.push(alternativePath);
-      
-      // If it contains 'images' folder, try both with and without it
-      if (restOfPath.includes('images/')) {
-        const pathWithoutImages = restOfPath.replace('images/', '');
-        decodedPaths.push(`${userId}/${pathWithoutImages}`);
-        decodedPaths.push(`${userId}/ ${pathWithoutImages}`);
-      } else {
-        // If it doesn't contain 'images', try adding it
-        const segments = restOfPath.split('/');
-        const lastSegment = segments.pop();
-        decodedPaths.push(`${userId}/${segments.join('/')}/images/${lastSegment}`);
-        decodedPaths.push(`${userId}/ ${segments.join('/')}/images/${lastSegment}`);
-      }
-    }
-
-    // Log all paths we're going to try
-    console.log(`Generated ${decodedPaths.length} path variations to try`);
-
-    // Try multiple container names if the first one fails
-    const containerNames = ['sagathumbnails', 'saga-thumbnails', 'sagafitvideos', 'sagavideos', 'images'];
-    
-    let response;
-    let successfulContainer = null;
-    let successfulPath = null;
-    
-    // Try each container with each path variation until we find the image
-    for (const container of containerNames) {
-      for (const decodedPath of decodedPaths) {
-        const blobUrl = `https://${accountName}.blob.core.windows.net/${container}/${decodedPath}?${sasToken}`;
+        console.log(`Trying thumbnail: ${containerName}/${pathVariation}`);
         
         try {
-          // First do a HEAD request to check if the file exists
-          const headResponse = await fetch(blobUrl, {
-            method: 'HEAD',
-            headers: {
-              'Accept': 'image/*'
-            }
-          });
+          const blobClient = containerClient.getBlobClient(pathVariation);
+          const response = await blobClient.download(0);
           
-          if (headResponse.ok) {
-            console.log(`Found image in container: ${container} with path: ${decodedPath}`);
-            
-            // Now do the actual GET request
-            const fetchResponse = await fetch(blobUrl, {
-              headers: {
-                'Accept': 'image/*'
-              }
-            });
-            
-            if (fetchResponse.ok) {
-              response = fetchResponse;
-              successfulContainer = container;
-              successfulPath = decodedPath;
-              break;
-            }
+          // If we got here, the blob exists
+          console.log(`Found thumbnail in: ${containerName}/${pathVariation}`);
+          foundImage = true;
+          
+          // Read the image data
+          const chunks = [];
+          const reader = response.readableStreamBody;
+          
+          if (!reader) {
+            continue;
           }
-        } catch (error) {
-          // Continue to the next path/container
-          // console.log(`Failed to fetch from ${container}/${decodedPath}`);
+          
+          for await (const chunk of reader) {
+            chunks.push(chunk);
+          }
+          
+          imageData = Buffer.concat(chunks);
+        } catch (err) {
+          // Continue to next path if this one fails
+          console.log(`Path not found: ${containerName}/${pathVariation}`);
         }
       }
-      
-      if (response) break; // Break out of container loop if we found a match
     }
-
-    if (!response || !response.ok) {
-      console.warn(`Failed to fetch image: ${path} from any container or path variation`);
-      
-      // Return a placeholder image instead of an error
+    
+    if (!foundImage || !imageData) {
+      console.log('No thumbnail found after trying all variations');
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    
+    // Set cache control headers (cache for 1 day)
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    
+    // Set content type based on file extension
+    const isJpg = path.toLowerCase().endsWith('.jpg') || path.toLowerCase().endsWith('.jpeg');
+    const isPng = path.toLowerCase().endsWith('.png');
+    
+    if (isJpg) {
+      res.setHeader('Content-Type', 'image/jpeg');
+    } else if (isPng) {
       res.setHeader('Content-Type', 'image/png');
-      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
-      
-      // A small placeholder PNG - could be improved with a nicer placeholder
-      const transparentPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-      return res.status(200).send(transparentPixel);
+    } else {
+      // Default to jpeg
+      res.setHeader('Content-Type', 'image/jpeg');
     }
-
-    // Get the content type from the response
-    const contentType = response.headers.get('Content-Type') || 'image/jpeg';
-
-    // Get the blob data as an array buffer
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Set appropriate headers
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
-    res.setHeader('Content-Length', buffer.length);
     
-    // Add debug headers in development
-    if (process.env.NODE_ENV === 'development') {
-      res.setHeader('X-Source-Container', successfulContainer);
-      res.setHeader('X-Source-Path', successfulPath);
-    }
-
-    // Send the response
-    res.status(200).send(buffer);
+    // Send the image
+    return res.send(imageData);
   } catch (error) {
-    console.error('Error proxying image:', error);
-    
-    // Return a placeholder image instead of an error
-    res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
-    
-    // A small placeholder PNG
-    const transparentPixel = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
-    return res.status(200).send(transparentPixel);
+    console.error('Error fetching image:', error);
+    return res.status(500).json({ error: 'Failed to fetch image' });
   }
 }
 

@@ -43,8 +43,20 @@ export default function ExercisePreview({ exercise }: ExercisePreviewProps) {
                 onError={(e) => {
                   // Fallback to proxy URL if direct URL fails
                   const imgElement = e.currentTarget;
+                  
                   if (!imgElement.src.includes('/api/image-proxy')) {
-                    imgElement.src = `/api/image-proxy?path=thumbnails/${exercise.videoId.split('.')[0]}.jpg`;
+                    console.log(`Thumbnail failed to load directly: ${exercise.videoId}`);
+                    // Extract video ID parts for proxy request
+                    const videoIdParts = exercise.videoId.split('.');
+                    const baseId = videoIdParts[0]; // Remove extension if present
+                    
+                    // Use our improved image-proxy endpoint with proper path format
+                    imgElement.src = `/api/image-proxy?path=thumbnails/${baseId}`;
+                    console.log(`Trying proxy for thumbnail: ${baseId}`);
+                  } else {
+                    // Already tried proxy and still failed, use placeholder
+                    console.log(`Proxy thumbnail also failed: ${exercise.videoId}`);
+                    imgElement.src = '/placeholder-thumbnail.jpg';
                   }
                 }}
               />
