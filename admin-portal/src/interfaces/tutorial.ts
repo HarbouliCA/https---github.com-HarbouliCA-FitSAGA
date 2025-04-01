@@ -8,6 +8,7 @@ export interface Tutorial {
   authorName?: string;
   createdAt: Date;
   updatedAt: Date;
+  imageUrl?: string;
   days: Day[];
 }
 

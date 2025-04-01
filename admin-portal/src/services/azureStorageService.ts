@@ -162,6 +162,69 @@ class AzureStorageService {
       return '';
     }
   }
+
+  // Get tutorial image URL from the Azure Blob Storage
+  async getTutorialImageUrl(tutorialId: string, fileName: string): Promise<string> {
+    try {
+      if (!this.accountName || !this.sasToken) {
+        throw new Error("Azure Storage credentials are not configured");
+      }
+
+      const path = `tutorials/${tutorialId}/${fileName}`;
+      return this.getFullUrl('sagathumbnails', path);
+    } catch (error) {
+      console.error('Error getting tutorial image URL:', error);
+      throw new Error('Failed to get tutorial image URL');
+    }
+  }
+
+  // Upload tutorial image to Azure Blob Storage
+  async uploadTutorialImage(file: File, tutorialId: string): Promise<string> {
+    try {
+      if (!this.accountName || !this.sasToken) {
+        throw new Error("Azure Storage credentials are not configured");
+      }
+
+      // Create a BlobServiceClient
+      const blobServiceClient = new BlobServiceClient(
+        `https://${this.accountName}.blob.core.windows.net?${this.sasToken}`
+      );
+
+      // Get a reference to the container
+      const containerClient = blobServiceClient.getContainerClient('sagathumbnails');
+      
+      // Create a unique filename
+      const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+      const validExtensions = ['jpg', 'jpeg', 'png'];
+      
+      if (!validExtensions.includes(fileExtension)) {
+        throw new Error('Only JPG, JPEG, and PNG files are supported');
+      }
+      
+      const timestamp = new Date().getTime();
+      const uniqueFileName = `${timestamp}_${file.name}`;
+      const blobPath = `tutorials/${tutorialId}/${uniqueFileName}`;
+      
+      // Get a block blob client
+      const blockBlobClient = containerClient.getBlockBlobClient(blobPath);
+      
+      // Upload the file
+      const arrayBuffer = await file.arrayBuffer();
+      await blockBlobClient.uploadData(arrayBuffer, {
+        blobHTTPHeaders: {
+          blobContentType: file.type
+        }
+      });
+      
+      console.log('Tutorial image uploaded successfully to:', blobPath);
+      
+      // Return the image URL
+      return this.getFullUrl('sagathumbnails', blobPath);
+    } catch (error) {
+      console.error('Error uploading tutorial image:', error);
+      throw new Error('Failed to upload tutorial image');
+    }
+  }
 }
 
 const azureStorageService = new AzureStorageService();

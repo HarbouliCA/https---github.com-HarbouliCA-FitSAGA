@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Exercise } from '@/interfaces/tutorial';
 import VideoPlayer from './VideoPlayer';
 import Image from 'next/image';
@@ -11,11 +11,58 @@ interface ExercisePreviewProps {
 
 export default function ExercisePreview({ exercise }: ExercisePreviewProps) {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+  const [thumbnailError, setThumbnailError] = useState(false);
+  const [thumbnailLoading, setThumbnailLoading] = useState(true);
+
+  useEffect(() => {
+    // Set initial state when exercise changes
+    setThumbnailLoading(true);
+    setThumbnailError(false);
+    
+    // Try to use our new thumbnail generator
+    if (exercise?.videoId) {
+      const generatedThumbnailUrl = `/api/thumbnail-generator?videoId=${encodeURIComponent(exercise.videoId)}`;
+      setThumbnailUrl(generatedThumbnailUrl);
+      console.log(`Using generated thumbnail for ${exercise.videoId}: ${generatedThumbnailUrl}`);
+    } else {
+      setThumbnailLoading(false);
+      setThumbnailError(true);
+    }
+  }, [exercise]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Fallback error handler (as backup)
+  const handleThumbnailError = () => {
+    console.log(`Generated thumbnail failed for video: ${exercise.videoId}`);
+    setThumbnailError(true);
+    setThumbnailLoading(false);
+    
+    // Try to use the existing approach one last time if we have thumbnailUrl from exercise
+    if (exercise.thumbnailUrl && !exercise.thumbnailUrl.includes('thumbnail-generator')) {
+      console.log(`Falling back to original thumbnail URL: ${exercise.thumbnailUrl}`);
+      setThumbnailUrl(exercise.thumbnailUrl);
+    } else if (exercise.videoId) {
+      // Last resort - try the known working pattern from image-proxy
+      const videoIdMatch = exercise.videoId.match(/^(\d+)_/);
+      if (videoIdMatch) {
+        const userId = videoIdMatch[1];
+        const imageId = exercise.videoId.split('.')[0];
+        const proxyUrl = `/api/image-proxy?path=${encodeURIComponent(`${userId}/día 1/images/${imageId}.png`)}`;
+        console.log(`Last resort thumbnail: ${proxyUrl}`);
+        setThumbnailUrl(proxyUrl);
+      } else {
+        // Absolute last resort - placeholder
+        setThumbnailUrl('/placeholder-thumbnail.jpg');
+      }
+    } else {
+      setThumbnailUrl('/placeholder-thumbnail.jpg');
+    }
   };
 
   return (
@@ -32,39 +79,34 @@ export default function ExercisePreview({ exercise }: ExercisePreviewProps) {
       ) : (
         <div className="relative">
           <div className="aspect-video max-h-[240px] bg-gray-100 relative">
-            {exercise.thumbnailUrl ? (
+            {thumbnailUrl ? (
               <Image
-                src={exercise.thumbnailUrl}
+                src={thumbnailUrl}
                 alt={exercise.name}
                 fill
                 className="object-cover"
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                 loading="lazy"
-                onError={(e) => {
-                  // Fallback to proxy URL if direct URL fails
-                  const imgElement = e.currentTarget;
-                  
-                  if (!imgElement.src.includes('/api/image-proxy')) {
-                    console.log(`Thumbnail failed to load directly: ${exercise.videoId}`);
-                    // Extract video ID parts for proxy request
-                    const videoIdParts = exercise.videoId.split('.');
-                    const baseId = videoIdParts[0]; // Remove extension if present
-                    
-                    // Use our improved image-proxy endpoint with proper path format
-                    imgElement.src = `/api/image-proxy?path=thumbnails/${baseId}`;
-                    console.log(`Trying proxy for thumbnail: ${baseId}`);
-                  } else {
-                    // Already tried proxy and still failed, use placeholder
-                    console.log(`Proxy thumbnail also failed: ${exercise.videoId}`);
-                    imgElement.src = '/placeholder-thumbnail.jpg';
-                  }
+                onError={handleThumbnailError}
+                onLoad={() => {
+                  console.log(`Thumbnail loaded successfully for ${exercise.videoId}`);
+                  setThumbnailLoading(false);
                 }}
               />
             ) : (
               <div className="flex items-center justify-center h-full">
-                <span className="text-gray-400">No thumbnail</span>
+                <span className="text-gray-400">
+                  {thumbnailLoading ? 'Loading thumbnail...' : 'No thumbnail'}
+                </span>
               </div>
             )}
+            
+            {thumbnailLoading && (
+              <div className="absolute inset-0 flex items-center justify-center bg-gray-200 bg-opacity-50">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              </div>
+            )}
+            
             <button
               onClick={() => setIsPlaying(true)}
               className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors"

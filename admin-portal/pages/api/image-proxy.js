@@ -38,9 +38,6 @@ export default async function handler(req, res) {
       
       // Try different patterns for thumbnails
       pathVariations.push(`${userId}/día 1/images/${filename}.png`);
-      pathVariations.push(`${userId}/día 1/images/${filename}.jpg`);
-      pathVariations.push(`${userId}/images/${filename}.png`);
-      pathVariations.push(`${userId}/images/${filename}.jpg`);
     }
     
     // Try these containers in order of likelihood

@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
+import Image from 'next/image';
+import Logo from '@/assets/images/logo.png';
 
 // Import the CreditCardIcon for the subscription plans menu item
 import {
@@ -50,8 +52,15 @@ export default function Sidebar() {
   return (
     <div className="flex flex-col w-64 bg-gray-900">
       {/* Logo */}
-      <div className="flex items-center justify-center h-16 bg-gray-900">
-        <span className="text-white text-2xl font-bold">FitSaga</span>
+      <div className="flex items-center px-4 py-6 mb-6">
+        <Image 
+          src={Logo}
+          alt="FitSaga Logo"
+          width={120}
+          height={40}
+          className="object-contain"
+          priority
+        />
       </div>
 
       {/* Navigation */}

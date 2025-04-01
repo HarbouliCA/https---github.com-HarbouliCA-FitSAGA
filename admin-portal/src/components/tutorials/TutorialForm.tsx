@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Tutorial, Day } from '@/interfaces/tutorial';
 import tutorialService from '@/services/tutorialService';
 import DayManager from './DayManager';
 import { useRouter } from 'next/navigation';
+import azureStorageService from '@/services/azureStorageService';
+import Image from 'next/image';
 
 interface TutorialFormProps {
   tutorial?: Tutorial;
@@ -22,6 +24,13 @@ export default function TutorialForm({ tutorial, authorId, authorName }: Tutoria
   const [activeDayIndex, setActiveDayIndex] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Add state for image upload
+  const [tutorialImage, setTutorialImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(tutorial?.imageUrl || null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const categories = ['Strength', 'Cardio', 'Flexibility', 'Balance', 'HIIT', 'Yoga', 'Pilates', 'Other'];
   const difficulties = ['Beginner', 'Intermediate', 'Advanced', 'All Levels'];
@@ -61,10 +70,52 @@ export default function TutorialForm({ tutorial, authorId, authorName }: Tutoria
     }
   };
 
+  // Add image handling functions
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImageError(null);
+    
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Validate file type
+    const fileType = file.type.toLowerCase();
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    
+    if (!validTypes.includes(fileType)) {
+      setImageError('Please select a JPG, JPEG, or PNG image');
+      return;
+    }
+    
+    // Validate file size (max 2MB)
+    const maxSize = 2 * 1024 * 1024; // 2MB
+    if (file.size > maxSize) {
+      setImageError('Image must be less than 2MB');
+      return;
+    }
+    
+    setTutorialImage(file);
+    
+    // Create a preview
+    const reader = new FileReader();
+    reader.onload = () => {
+      setImagePreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+  
+  const handleRemoveImage = () => {
+    setTutorialImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     setError(null);
+    setImageError(null);
     
     try {
       if (!title) throw new Error('Title is required');
@@ -134,6 +185,33 @@ export default function TutorialForm({ tutorial, authorId, authorName }: Tutoria
         days: sanitizeDays
       };
       
+      // Process image upload if we have a new image
+      if (tutorialImage) {
+        try {
+          setImageLoading(true);
+          
+          // We need an ID for the tutorial to store the image
+          // If it's a new tutorial, we'll use a temporary ID
+          const tempId = tutorial?.id || `temp_${Date.now()}`;
+          
+          // Upload the image
+          const imageUrl = await azureStorageService.uploadTutorialImage(tutorialImage, tempId);
+          
+          // Add the image URL to the tutorial data
+          tutorialData.imageUrl = imageUrl;
+          
+          setImageLoading(false);
+        } catch (imgErr: any) {
+          setImageLoading(false);
+          setImageError(imgErr.message || 'Failed to upload image');
+          console.error('Image upload error:', imgErr);
+          // Continue without the image
+        }
+      } else if (imagePreview && tutorial?.imageUrl) {
+        // Keep the existing image URL if we didn't upload a new one
+        tutorialData.imageUrl = tutorial.imageUrl;
+      }
+      
       // Final recursive clean to remove any nested undefined values
       tutorialData = removeUndefined(tutorialData);
       
@@ -191,6 +269,88 @@ export default function TutorialForm({ tutorial, authorId, authorName }: Tutoria
               </select>
             </div>
             
+            {/* Add image upload section */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Tutorial Image
+              </label>
+              
+              <div className="mt-1 flex flex-col space-y-4">
+                {imagePreview && (
+                  <div className="relative w-full h-48 bg-gray-100 rounded-lg overflow-hidden">
+                    <Image
+                      src={imagePreview}
+                      alt="Tutorial preview"
+                      fill
+                      className="object-cover"
+                      priority
+                    />
+                    <button 
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600"
+                      aria-label="Remove image"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                
+                {!imagePreview && (
+                  <div className="flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md">
+                    <div className="space-y-1 text-center">
+                      <svg
+                        className="mx-auto h-12 w-12 text-gray-400"
+                        stroke="currentColor"
+                        fill="none"
+                        viewBox="0 0 48 48"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <div className="flex text-sm text-gray-600">
+                        <label
+                          htmlFor="tutorial-image"
+                          className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500"
+                        >
+                          <span>Upload a file</span>
+                          <input
+                            id="tutorial-image"
+                            ref={fileInputRef}
+                            name="tutorial-image"
+                            type="file"
+                            className="sr-only"
+                            accept="image/jpeg,image/jpg,image/png"
+                            onChange={handleImageChange}
+                          />
+                        </label>
+                        <p className="pl-1">or drag and drop</p>
+                      </div>
+                      <p className="text-xs text-gray-500">PNG, JPG, JPEG up to 2MB</p>
+                    </div>
+                  </div>
+                )}
+                
+                {imageError && (
+                  <p className="text-sm text-red-500">{imageError}</p>
+                )}
+                
+                {imageLoading && (
+                  <div className="flex items-center">
+                    <div className="mr-2 animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>
+                    <span className="text-sm text-gray-500">Uploading image...</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Difficulty *
@@ -207,17 +367,16 @@ export default function TutorialForm({ tutorial, authorId, authorName }: Tutoria
               </select>
             </div>
             
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Description
               </label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full p-2 border rounded-md"
-                rows={3}
-                placeholder="Describe the tutorial..."
-              />
+                className="w-full p-2 border rounded-md min-h-[100px]"
+                placeholder="Describe your tutorial..."
+              ></textarea>
             </div>
           </div>
         </div>

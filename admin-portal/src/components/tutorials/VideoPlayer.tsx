@@ -55,6 +55,9 @@ export default function VideoPlayer({
   // Use a ref to track if component is mounted to prevent play() after unmount
   const isMounted = useRef(true);
 
+  // Add a ref to track if a play operation is in progress
+  const playInProgress = useRef(false);
+
   // Set isMounted on component mount
   useEffect(() => {
     // Ensure the ref is set to true when the component is mounted
@@ -258,9 +261,18 @@ export default function VideoPlayer({
     // Force isMounted to true since we're in an active component context
     isMounted.current = true;
     
+    // If already playing or play is in progress, don't try to play again
+    if (playInProgress.current || (videoRef.current && !videoRef.current.paused)) {
+      console.log("Play already in progress or video already playing, ignoring duplicate play request");
+      return;
+    }
+    
     if (videoRef.current) {
       try {
         console.log("Attempting to play video");
+        
+        // Set lock to prevent concurrent play attempts
+        playInProgress.current = true;
         
         // Set volume to 0 initially to help with autoplay restrictions
         videoRef.current.volume = 0.0;
@@ -286,17 +298,30 @@ export default function VideoPlayer({
                   }, 200);
                 }
               }, 1000);
+              
+              // Release lock
+              playInProgress.current = false;
             })
             .catch(err => {
-              console.error("Video play failed:", err.message);
+              // Release lock on error
+              playInProgress.current = false;
+              
+              // Only log as warning, not as error to reduce console noise
+              console.warn("Video play failed:", err.message);
+              
               // If autoplay is blocked, make the manual play button more prominent
               if (err.name === "NotAllowedError") {
                 console.log("Autoplay blocked by browser. User interaction required.");
               }
             });
+        } else {
+          // Release lock if play() didn't return a promise
+          playInProgress.current = false;
         }
       } catch (err) {
-        console.error('Failed to play video:', err);
+        // Release lock on error
+        playInProgress.current = false;
+        console.warn('Failed to play video:', err);
       }
     } else {
       console.error('Video reference not available for playback');
@@ -403,12 +428,25 @@ export default function VideoPlayer({
           setCurrentRep(1);
           setCurrentSet(prev => prev + 1);
         } else {
-          // All sets complete, start final rest period
-          console.log(`Workout complete! Final rest: ${exercise.restTimeAfterExercise}s`);
-          setIsResting(true);
-          setRestTimeRemaining(exercise.restTimeAfterExercise);
+          // All sets complete - Final exercise is done
+          console.log(`All sets complete! Skipping final rest and completing exercise immediately.`);
+          
+          // Reset workout states immediately
+          setWorkoutActive(false);
+          setWorkoutPaused(false);
+          setCurrentSet(1);
+          setCurrentRep(1);
           setWorkoutComplete(true);
-          // Don't turn off workoutActive yet - wait until rest is complete
+          
+          // Don't start rest time, immediately call onComplete
+          if (onComplete) {
+            console.log('⭐ Exercise complete! Calling onComplete immediately to move to next exercise or show completion');
+            setTimeout(() => {
+              if (isMounted.current) {
+                onComplete();
+              }
+            }, 500);
+          }
         }
       }
     } else if (!workoutComplete && !workoutActive && onComplete) {
@@ -457,10 +495,23 @@ export default function VideoPlayer({
 
   const pauseWorkout = () => {
     console.log('Pausing workout');
-    setWorkoutPaused(true);
     
-    if (videoRef.current) {
-      videoRef.current.pause();
+    // Wait for any play operation to complete before pausing
+    if (playInProgress.current) {
+      console.log('Play in progress, scheduling pause after play completes');
+      // Schedule pause after a small delay to ensure play completes first
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.pause();
+        }
+        setWorkoutPaused(true);
+      }, 100);
+    } else {
+      // Pause immediately if no play is in progress
+      if (videoRef.current) {
+        videoRef.current.pause();
+      }
+      setWorkoutPaused(true);
     }
     
     // Notify external caller if callback provided
@@ -521,14 +572,32 @@ export default function VideoPlayer({
 
   // Watch for autoplay prop changes to start/stop video accordingly
   useEffect(() => {
-    console.log("Autoplay prop changed:", autoplay);
-    if (videoRef.current && isMounted.current) {
-      if (autoplay) {
-        console.log("Autoplay true - attempting to play video");
-        safePlayVideo();
-      } else {
-        console.log("Autoplay false - pausing video");
+    console.log("Autoplay prop changed:", autoplay, "current play in progress:", playInProgress.current);
+    
+    if (autoplay && videoRef.current && isMounted.current) {
+      // If we should be playing but not yet playing
+      if (videoRef.current.paused && !playInProgress.current) {
+        console.log("Autoplay true - scheduling video playback");
+        // Use setTimeout to avoid immediate play which can cause conflicts
+        setTimeout(() => {
+          if (isMounted.current && videoRef.current && videoRef.current.paused) {
+            console.log("Executing delayed autoplay");
+            safePlayVideo();
+          }
+        }, 150);
+      }
+    } else if (!autoplay && videoRef.current && !videoRef.current.paused) {
+      console.log("Autoplay false - pausing video");
+      // Only pause if we're not in a play operation
+      if (!playInProgress.current) {
         videoRef.current.pause();
+      } else {
+        console.log("Play in progress, scheduling pause after delay");
+        setTimeout(() => {
+          if (videoRef.current && !videoRef.current.paused) {
+            videoRef.current.pause();
+          }
+        }, 200);
       }
     }
   }, [autoplay]);

@@ -88,15 +88,15 @@ export default function PlayTutorialPage() {
         return nextIndex;
       });
       
-      // Reset workout state
-      setIsPlaying(false);
+      // Reset workout state but set isPlaying to true to start the next video automatically
+      setIsPlaying(true);
       setIsPaused(false);
       setCurrentSet(1);
       setCurrentRep(1);
       setIsResting(false);
       
       // Log the transition
-      console.log("⭐ Reset workout state, ready for next exercise");
+      console.log("⭐ Reset workout state and auto-starting next exercise");
     } else if (currentDayIndex < tutorial.days.length - 1) {
       // Move to first exercise of next day
       console.log(`⭐ Current day ${currentDayIndex} completed, moving to day ${currentDayIndex + 1}`);
@@ -107,15 +107,15 @@ export default function PlayTutorialPage() {
       });
       setCurrentExerciseIndex(0);
       
-      // Reset workout state
-      setIsPlaying(false);
+      // Reset workout state but set isPlaying to true to start the next video automatically
+      setIsPlaying(true);
       setIsPaused(false);
       setCurrentSet(1);
       setCurrentRep(1);
       setIsResting(false);
       
       // Log the transition
-      console.log("⭐ Reset workout state, ready for first exercise of next day");
+      console.log("⭐ Reset workout state and auto-starting first exercise of next day");
     } else {
       // Tutorial completed
       console.log("⭐ All exercises in all days completed! Showing completion celebration.");
@@ -229,7 +229,17 @@ export default function PlayTutorialPage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">{tutorial.title}</h1>
+        <div className="flex items-center">
+          <Link
+            href="/dashboard/tutorials"
+            className="mr-4 p-2 rounded-md hover:bg-gray-100"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+          </Link>
+          <h1 className="text-2xl font-bold">{tutorial.title}</h1>
+        </div>
         <div className="flex space-x-4">
           <Link
             href={`/dashboard/tutorials/view/${tutorial.id}`}
